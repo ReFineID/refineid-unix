@@ -293,6 +293,10 @@ impl PcscCard {
     /// Observed on a production FINEID card over an ACR1581 PICC
     /// slot, 2026-07-24.
     ///
+    /// This does not prove recovery from `MultiApp` v5's separate
+    /// progressive CAN-PACE delay. Its reset rule is undisclosed; see
+    /// `doc/bugs/2026-08-09-thales-can-pace-delay.md`.
+    ///
     /// The refreshed ATR replaces the cached one, so
     /// [`CardTransport::atr`] keeps reporting what the card
     /// actually answered.

@@ -419,6 +419,10 @@ pub struct PaceMidwayState {
 /// but the card can suspend the password until a power reset; a
 /// card reset ends the session entirely.
 ///
+/// Thales `MultiApp` v5 also applies a progressive delay after
+/// unsuccessful CAN-PACE attempts. Callers must not retry automatically;
+/// see `doc/bugs/2026-08-09-thales-can-pace-delay.md`.
+///
 /// # Errors
 /// Transport, BER-decode, card status-word, off-curve-point, or
 /// auth-tag mismatch failures encountered during the five PACE

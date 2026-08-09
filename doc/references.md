@@ -71,6 +71,23 @@ Published by DVV at <https://dvv.fi/en/fineid-specifications>.
 - **ICAO Doc 9303** (`icao9303`, 51) — machine-readable travel documents. Part 11
   carries the security mechanisms; the eMRTD support follows it.
 
+#### Vendor card behavior
+
+### thales_multiapp_v5_security_target
+
+- **Supports:** the MultiApp v5.0.A FIA_AFL.1/PACE rule. One failed
+  MRZ/CAN authentication exponentially increases the delay before a
+  new attempt; the CAN refinement defines a presentation-count
+  parameter in the range 0 to 255 and an increasing wait before the
+  card sends its PACE response.
+- **Does NOT prove:** the numeric delay schedule, counter persistence,
+  recovery rule, or that every interrupted exchange increments it. A
+  slow exchange still needs a command-level trace before it is assigned
+  to this defense.
+- **Source quality:** industry-published vendor security target,
+  evaluated under Common Criteria. It describes product behavior but
+  leaves recovery parameters undisclosed.
+
 #### Certificates, revocation, signatures
 
 - **RFC 5280** (`rfc5280`, 106) — X.509 certificate and CRL profile. The most
