@@ -1,8 +1,13 @@
 # ReFineID for Unix
 
+**Refined Electronic Identification.**
+
 Open Source reimplementation of FINEID middleware for Finnish identity
 card users, built from
-[public specifications](https://dvv.fi/en/fineid-specifications).
+[public specifications](https://dvv.fi/en/fineid-specifications) --
+never from guesswork or from reverse-engineering the incumbent. The
+specifications this tree implements are indexed, with what each one
+governs, in [`doc/references.md`](doc/references.md).
 
 This repository is the Unix (Linux and BSD) tree. It ships three
 things:

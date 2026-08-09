@@ -1,0 +1,259 @@
+% references.bib - ReFineID-Unix
+%
+% Citation entries for this repository. Machine-parseable BibTeX with
+% two custom fields:
+%
+%   source_quality   normative | peer-reviewed | industry-published |
+%                    observation | other
+%   last_verified    YYYY-MM-DD when the URL / claim was last checked
+%
+% `normative` means the entry decides behaviour: when the code and the
+% document disagree, the code is wrong. Everything else is context.
+%
+% Companion file `references.md` carries the annotations explaining what
+% each entry supports and what it does NOT prove. New citations MUST be
+% added to both files.
+
+% ---------------------------------------------------------------- cards
+
+@misc{fineid_specifications,
+  author          = {{Digital and Population Data Services Agency}},
+  title           = {{FINEID} Specifications},
+  howpublished    = {S1 electronic ID application, S2 certificate
+                     profile, S4-1 and S4-2 card model profiles},
+  url             = {https://dvv.fi/en/fineid-specifications},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{iso7816_4,
+  author          = {{ISO/IEC}},
+  title           = {{ISO/IEC} 7816-4: Identification cards --- Integrated
+                     circuit cards --- Part 4: Organization, security and
+                     commands for interchange},
+  year            = {2020},
+  note            = {iso.org returns 403 to automated requests; verify by hand.},
+  url             = {https://www.iso.org/standard/77180.html},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{iso7816_15,
+  author          = {{ISO/IEC}},
+  title           = {{ISO/IEC} 7816-15: Identification cards --- Integrated
+                     circuit cards --- Part 15: Cryptographic information
+                     application},
+  year            = {2016},
+  note            = {iso.org returns 403 to automated requests; verify by hand.},
+  url             = {https://www.iso.org/standard/65250.html},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{bsi_tr03110,
+  author          = {{Bundesamt fuer Sicherheit in der Informationstechnik}},
+  title           = {{TR-03110}: Advanced Security Mechanisms for Machine
+                     Readable Travel Documents and {eIDAS} Token},
+  url             = {https://www.bsi.bund.de/EN/Themen/Unternehmen-und-Organisationen/Standards-und-Zertifizierung/Technische-Richtlinien/TR-nach-Thema-sortiert/tr03110/tr-03110.html},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{icao9303,
+  author          = {{International Civil Aviation Organization}},
+  title           = {Doc 9303: Machine Readable Travel Documents},
+  edition         = {Eighth},
+  year            = {2021},
+  note            = {Part 11 carries the security mechanisms. Deep links
+                     into icao.int have not survived their site
+                     reorganisations; the publications index is cited
+                     instead because it stays put.},
+  url             = {https://www.icao.int/publications},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+% ------------------------------------------------------ pki and crypto
+
+@techreport{rfc5280,
+  author          = {Cooper, D. and Santesson, S. and Farrell, S. and
+                     Boeyen, S. and Housley, R. and Polk, W.},
+  title           = {Internet {X.509} Public Key Infrastructure
+                     Certificate and Certificate Revocation List ({CRL})
+                     Profile},
+  number          = {RFC 5280},
+  year            = {2008},
+  doi             = {10.17487/RFC5280},
+  url             = {https://www.rfc-editor.org/rfc/rfc5280},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@techreport{rfc6960,
+  author          = {Santesson, S. and Myers, M. and Ankney, R. and
+                     Malpani, A. and Galperin, S. and Adams, C.},
+  title           = {{X.509} Internet Public Key Infrastructure Online
+                     Certificate Status Protocol --- {OCSP}},
+  number          = {RFC 6960},
+  year            = {2013},
+  doi             = {10.17487/RFC6960},
+  url             = {https://www.rfc-editor.org/rfc/rfc6960},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@techreport{rfc5652,
+  author          = {Housley, R.},
+  title           = {Cryptographic Message Syntax ({CMS})},
+  number          = {RFC 5652},
+  year            = {2009},
+  doi             = {10.17487/RFC5652},
+  url             = {https://www.rfc-editor.org/rfc/rfc5652},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@techreport{rfc3161,
+  author          = {Adams, C. and Cain, P. and Pinkas, D. and Zuccherato, R.},
+  title           = {Internet {X.509} Public Key Infrastructure Time-Stamp
+                     Protocol ({TSP})},
+  number          = {RFC 3161},
+  year            = {2001},
+  doi             = {10.17487/RFC3161},
+  url             = {https://www.rfc-editor.org/rfc/rfc3161},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+% -------------------------------------------- signature formats, eIDAS
+
+@misc{etsi_aades,
+  author          = {{ETSI}},
+  title           = {Electronic Signatures and Infrastructures: {EN} 319 122
+                     ({CAdES}), {EN} 319 132 ({XAdES}), {EN} 319 142
+                     ({PAdES}), {EN} 319 162 ({ASiC}), {EN} 319 412
+                     (certificate profiles)},
+  url             = {https://www.etsi.org/standards},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{eidas910_2014,
+  author          = {{European Parliament and Council}},
+  title           = {Regulation ({EU}) No 910/2014 on electronic
+                     identification and trust services for electronic
+                     transactions in the internal market ({eIDAS})},
+  year            = {2014},
+  url             = {https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32014R0910},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+@misc{pkcs11_v240,
+  author          = {{OASIS}},
+  title           = {{PKCS} \#11 Cryptographic Token Interface Base
+                     Specification Version 2.40},
+  year            = {2015},
+  url             = {https://docs.oasis-open.org/pkcs11/pkcs11-base/v2.40/pkcs11-base-v2.40.html},
+  source_quality  = {normative},
+  last_verified   = {2026-08-09}
+}
+
+% ------------------------------------------------ engineering literature
+
+@article{parnas1972decomposing,
+  author          = {Parnas, D. L.},
+  title           = {On the Criteria to Be Used in Decomposing Systems into
+                     Modules},
+  journal         = {Communications of the ACM},
+  volume          = {15},
+  number          = {12},
+  pages           = {1053--1058},
+  year            = {1972},
+  doi             = {10.1145/361598.361623},
+  note            = {dl.acm.org returns 403 to automated requests; verify by hand.},
+  url             = {https://dl.acm.org/doi/10.1145/361598.361623},
+  source_quality  = {peer-reviewed},
+  last_verified   = {2026-08-09}
+}
+
+@misc{cockburn2005hexagonal,
+  author          = {Cockburn, Alistair},
+  title           = {Hexagonal Architecture (Ports and Adapters)},
+  year            = {2005},
+  url             = {https://alistair.cockburn.us/hexagonal-architecture/},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@misc{metz2016wrong,
+  author          = {Metz, Sandi},
+  title           = {The Wrong Abstraction},
+  year            = {2016},
+  url             = {https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@book{fowler1999refactoring,
+  author          = {Fowler, Martin},
+  title           = {Refactoring: Improving the Design of Existing Code},
+  publisher       = {Addison-Wesley},
+  year            = {1999},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@misc{nygard2011adr,
+  author          = {Nygard, Michael},
+  title           = {Documenting Architecture Decisions},
+  year            = {2011},
+  url             = {https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@book{norman1988design,
+  author          = {Norman, Donald A.},
+  title           = {The Design of Everyday Things},
+  publisher       = {Basic Books},
+  year            = {1988},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@misc{nielsen1994heuristics,
+  author          = {Nielsen, Jakob},
+  title           = {10 Usability Heuristics for User Interface Design},
+  year            = {1994},
+  url             = {https://www.nngroup.com/articles/ten-usability-heuristics/},
+  source_quality  = {industry-published},
+  last_verified   = {2026-08-09}
+}
+
+@article{miller1956magical,
+  author          = {Miller, George A.},
+  title           = {The Magical Number Seven, Plus or Minus Two: Some
+                     Limits on Our Capacity for Processing Information},
+  journal         = {Psychological Review},
+  volume          = {63},
+  number          = {2},
+  pages           = {81--97},
+  year            = {1956},
+  doi             = {10.1037/h0043158},
+  source_quality  = {peer-reviewed},
+  last_verified   = {2026-08-09}
+}
+
+@article{bainbridge1983ironies,
+  author          = {Bainbridge, Lisanne},
+  title           = {Ironies of Automation},
+  journal         = {Automatica},
+  volume          = {19},
+  number          = {6},
+  pages           = {775--779},
+  year            = {1983},
+  doi             = {10.1016/0005-1098(83)90046-8},
+  source_quality  = {peer-reviewed},
+  last_verified   = {2026-08-09}
+}
