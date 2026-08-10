@@ -22,8 +22,11 @@
 //!
 //! # Scope
 //!
-//! Classic cross-reference tables only. A PDF written with
-//! cross-reference *streams* is refused with
+//! Both cross-reference shapes: classic tables and the streams that
+//! replaced them in PDF 1.5, with the objects those index inside
+//! object streams ([`xref_stream`]). A revision is closed in the shape
+//! the document already uses. A stream behind a filter or predictor
+//! this reader does not decode is refused with
 //! [`PdfError::UnsupportedCrossReferenceStream`] rather than
 //! mis-signed: an update whose xref the reader cannot follow produces a
 //! file that opens and shows a broken signature, which is worse than a
@@ -40,6 +43,7 @@ use crate::sign::cades::DigestAlgorithm;
 
 mod appearance;
 mod spot;
+mod xref_stream;
 
 pub use appearance::{SignatureInk, VisibleSignature};
 use std::collections::HashSet;
@@ -90,13 +94,14 @@ pub enum PdfError {
     NotAPdf,
     /// No `startxref`, or it does not parse.
     MissingStartXref,
-    /// No `trailer` dictionary. Usually means cross-reference streams.
+    /// The cross-reference chain could not be read.
     MissingTrailer,
     /// The trailer has no `/Root`.
     MissingCatalogReference,
     /// The object the trailer points at is not in the file.
     MissingObject(u32),
-    /// Cross-reference streams are not supported yet.
+    /// A cross-reference or object stream uses a filter or predictor
+    /// this reader does not decode.
     UnsupportedCrossReferenceStream,
     /// The document is encrypted; this writer cannot extend it.
     UnsupportedEncryption,
@@ -126,13 +131,11 @@ impl core::fmt::Display for PdfError {
         match *self {
             Self::NotAPdf => f.write_str("not a PDF: no %PDF- header"),
             Self::MissingStartXref => f.write_str("no usable startxref"),
-            Self::MissingTrailer => {
-                f.write_str("no trailer dictionary (likely a cross-reference stream)")
-            }
+            Self::MissingTrailer => f.write_str("the cross-reference chain could not be read"),
             Self::MissingCatalogReference => f.write_str("the trailer has no /Root"),
             Self::MissingObject(number) => write!(f, "object {number} is not in the file"),
             Self::UnsupportedCrossReferenceStream => {
-                f.write_str("cross-reference streams are not supported")
+                f.write_str("the cross-reference stream uses an unsupported encoding")
             }
             Self::UnsupportedEncryption => {
                 f.write_str("the document is encrypted, which this writer cannot extend")
@@ -338,7 +341,6 @@ fn prepare_kind(
     if find_first(trailer, b"/Encrypt").is_some() {
         return Err(PdfError::UnsupportedEncryption);
     }
-    let previous_xref = index.start_xref();
     let catalog_number =
         dictionary_reference(trailer, b"/Root").ok_or(PdfError::MissingCatalogReference)?;
     let next_object = dictionary_integer(trailer, b"/Size").unwrap_or(0).max(1);
@@ -443,9 +445,8 @@ fn prepare_kind(
         &mut offsets,
         new_size,
         catalog_number,
-        previous_xref,
-        trailer,
-    );
+        &index,
+    )?;
 
     out.extend_from_slice(&update);
     let _ = base;
@@ -1111,27 +1112,42 @@ fn finish_placeholder(
 /// Shared by the two writers so the `/Prev` chain and the carried
 /// `/ID` are built the same way in both. `offsets` is sorted here
 /// rather than by the caller, because a cross-reference section that
-/// is not in object order is one a reader may not follow.
+/// is not in object order is one a reader may not follow. A document
+/// whose newest section is a stream is closed with a stream, in which
+/// case the stream object itself takes the number `size` and the
+/// written `/Size` moves past it.
 fn push_xref_and_trailer(
     update: &mut Vec<u8>,
     update_start: usize,
     offsets: &mut [(u32, usize)],
     size: u32,
     catalog_number: u32,
-    previous_xref: usize,
-    trailer: &[u8],
-) {
+    index: &PdfIndex<'_>,
+) -> Result<(), PdfError> {
+    let previous_xref = index.start_xref();
     let xref_at = update_start.saturating_add(update.len());
     offsets.sort_unstable_by_key(|(number, _)| *number);
+    let carried = trailer_carry_forward(index.trailer());
+    if index.newest_is_stream() {
+        return xref_stream::push_stream_close(
+            update,
+            xref_at,
+            offsets,
+            size,
+            catalog_number,
+            previous_xref,
+            &carried,
+        );
+    }
     update.extend_from_slice(&cross_reference_section(offsets));
     update.extend_from_slice(
         format!(
-            "trailer\n<< /Size {size} /Root {catalog_number} 0 R /Prev {previous_xref}{}\
-             >>\nstartxref\n{xref_at}\n%%EOF\n",
-            trailer_carry_forward(trailer)
+            "trailer\n<< /Size {size} /Root {catalog_number} 0 R /Prev {previous_xref}{carried}\
+             >>\nstartxref\n{xref_at}\n%%EOF\n"
         )
         .as_bytes(),
     );
+    Ok(())
 }
 
 /// What the source trailer must hand to the update's trailer.
@@ -1698,7 +1714,6 @@ pub fn append_validation_store(
     }
     let index = PdfIndex::parse(signed_pdf)?;
     let trailer = index.trailer();
-    let previous_xref = index.start_xref();
     let catalog_number =
         dictionary_reference(trailer, b"/Root").ok_or(PdfError::MissingCatalogReference)?;
     let mut next_object = dictionary_integer(trailer, b"/Size").unwrap_or(0).max(1);
@@ -1754,9 +1769,8 @@ pub fn append_validation_store(
         &mut offsets,
         next_object,
         catalog_number,
-        previous_xref,
-        trailer,
-    );
+        &index,
+    )?;
     out.extend_from_slice(&update);
     Ok(out)
 }
@@ -1824,20 +1838,44 @@ fn find_start_xref(pdf: &[u8]) -> Result<usize, PdfError> {
     text.parse().map_err(|_ignored| PdfError::MissingStartXref)
 }
 
-/// A live object entry resolved from the classic xref chain.
+/// Where one live object's bytes sit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum XrefLocation {
+    /// Free, or an entry type this reader does not know: the number
+    /// is claimed so older sections' copies stay shadowed, and a
+    /// reference to it resolves to nothing.
+    Free,
+    /// At a byte offset in the file, written as `N G obj`.
+    Direct {
+        /// The offset of the object header.
+        offset: usize,
+    },
+    /// Inside an object stream (ISO 32000-1 sec.7.5.7).
+    Compressed {
+        /// The object stream's own number.
+        container: u32,
+        /// The object's position among the stream's contents.
+        position: u32,
+    },
+}
+
+/// One object entry resolved from the xref chain.
 #[derive(Debug, Clone, Copy)]
 struct XrefEntry {
     number: u32,
     generation: u16,
-    offset: usize,
-    in_use: bool,
+    location: XrefLocation,
 }
 
-/// The classic xref view of the current PDF revision.
+/// The xref view of the current PDF revision, whichever shape its
+/// sections take.
 struct PdfIndex<'a> {
     pdf: &'a [u8],
     trailer: Vec<u8>,
     start_xref: usize,
+    /// Whether the newest section is a cross-reference stream, which
+    /// decides the shape of the section an update appends.
+    newest_is_stream: bool,
     objects: Vec<XrefEntry>,
 }
 
@@ -1850,6 +1888,7 @@ impl<'a> PdfIndex<'a> {
         let mut next = Some(start_xref);
         let mut visited = Vec::new();
         let mut trailer = None;
+        let mut newest_is_stream = false;
         let mut objects = Vec::new();
 
         for _ in 0..Self::MAX_XREF_DEPTH {
@@ -1862,6 +1901,7 @@ impl<'a> PdfIndex<'a> {
             let section = parse_xref_section(pdf, offset)?;
             if trailer.is_none() {
                 trailer = Some(section.trailer.clone());
+                newest_is_stream = section.is_stream;
             }
             for entry in section.entries {
                 // Newer xref sections win. Keep a newer free entry too:
@@ -1880,6 +1920,7 @@ impl<'a> PdfIndex<'a> {
             pdf,
             trailer: trailer.ok_or(PdfError::MissingTrailer)?,
             start_xref,
+            newest_is_stream,
             objects,
         })
     }
@@ -1890,6 +1931,11 @@ impl<'a> PdfIndex<'a> {
 
     const fn start_xref(&self) -> usize {
         self.start_xref
+    }
+
+    /// Whether an update must close with a cross-reference stream.
+    const fn newest_is_stream(&self) -> bool {
+        self.newest_is_stream
     }
 
     fn object_body(&self, number: u32) -> Option<Vec<u8>> {
@@ -1903,21 +1949,36 @@ impl<'a> PdfIndex<'a> {
         let entry = self.objects.iter().find(|entry| {
             entry.number == reference.number && entry.generation == reference.generation
         })?;
-        if !entry.in_use {
-            return None;
+        match entry.location {
+            XrefLocation::Free => None,
+            XrefLocation::Direct { offset } => object_body_at(
+                self.pdf,
+                reference.number,
+                reference.generation,
+                offset,
+            ),
+            XrefLocation::Compressed {
+                container,
+                position,
+            } => {
+                let carrier = self
+                    .objects
+                    .iter()
+                    .find(|entry| entry.number == container)?;
+                let XrefLocation::Direct { offset } = carrier.location else {
+                    return None;
+                };
+                xref_stream::compressed_body(self.pdf, offset, reference.number, position)
+            }
         }
-        object_body_at(
-            self.pdf,
-            reference.number,
-            reference.generation,
-            entry.offset,
-        )
     }
 }
 
 struct XrefSection {
     trailer: Vec<u8>,
     entries: Vec<XrefEntry>,
+    /// Whether the section is a cross-reference stream.
+    is_stream: bool,
 }
 
 fn parse_xref_section(pdf: &[u8], offset: usize) -> Result<XrefSection, PdfError> {
@@ -1926,11 +1987,7 @@ fn parse_xref_section(pdf: &[u8], offset: usize) -> Result<XrefSection, PdfError
         return Err(PdfError::MissingStartXref);
     };
     if !rest.starts_with(b"xref") {
-        return Err(if looks_like_xref_stream(pdf, cursor) {
-            PdfError::UnsupportedCrossReferenceStream
-        } else {
-            PdfError::MissingTrailer
-        });
+        return xref_stream::parse_stream_section(pdf, cursor);
     }
     cursor = cursor.saturating_add(b"xref".len());
 
@@ -1939,7 +1996,7 @@ fn parse_xref_section(pdf: &[u8], offset: usize) -> Result<XrefSection, PdfError
         let token = read_pdf_token(pdf, &mut cursor).ok_or(PdfError::MissingTrailer)?;
         if token == b"trailer" {
             let (trailer, _after) = dictionary_at(pdf, cursor).ok_or(PdfError::MissingTrailer)?;
-            return Ok(XrefSection { trailer, entries });
+            return hybrid_merged(pdf, trailer, entries);
         }
 
         let start = parse_u32(token).ok_or(PdfError::MissingTrailer)?;
@@ -1955,22 +2012,49 @@ fn parse_xref_section(pdf: &[u8], offset: usize) -> Result<XrefSection, PdfError
                     .ok_or(PdfError::MissingTrailer)?;
             let flag = read_pdf_token(pdf, &mut cursor).ok_or(PdfError::MissingTrailer)?;
             let number = start.checked_add(index).ok_or(PdfError::MissingTrailer)?;
+            let location = if flag == b"n" {
+                XrefLocation::Direct {
+                    offset: object_offset,
+                }
+            } else {
+                XrefLocation::Free
+            };
             entries.push(XrefEntry {
                 number,
                 generation,
-                offset: object_offset,
-                in_use: flag == b"n",
+                location,
             });
         }
     }
 }
 
-fn looks_like_xref_stream(pdf: &[u8], offset: usize) -> bool {
-    let Some(rest) = pdf.get(offset..) else {
-        return false;
+/// A classic table section, merged with the cross-reference stream a
+/// hybrid trailer names.
+///
+/// A hybrid revision keeps the authoritative copy of its entries in
+/// the stream its `/XRefStm` key points at; the table is the fallback
+/// for readers that predate streams (ISO 32000-1 sec.7.5.8.4). The
+/// stream's entries go first, so they win the newest-copy merge.
+fn hybrid_merged(
+    pdf: &[u8],
+    trailer: Vec<u8>,
+    entries: Vec<XrefEntry>,
+) -> Result<XrefSection, PdfError> {
+    let Some(hybrid) = dictionary_usize(&trailer, b"/XRefStm") else {
+        return Ok(XrefSection {
+            trailer,
+            entries,
+            is_stream: false,
+        });
     };
-    let limit = find_first(rest, b"stream").unwrap_or(rest.len()).min(512);
-    find_first(&rest[..limit], b"/XRef").is_some()
+    let stream = xref_stream::parse_stream_section(pdf, skip_pdf_whitespace(pdf, hybrid))?;
+    let mut combined = stream.entries;
+    combined.extend(entries);
+    Ok(XrefSection {
+        trailer,
+        entries: combined,
+        is_stream: false,
+    })
 }
 
 fn skip_pdf_whitespace(pdf: &[u8], mut cursor: usize) -> usize {
@@ -2482,7 +2566,8 @@ mod tests {
     use super::{
         AnnotsTarget, DEFAULT_SIGNATURE_CAPACITY, FieldListTarget, MAX_FIELD_NAME_BYTES,
         PdfDictionary, PdfError, PdfIndex, SignatureInk, SignatureMetadata, VisibleSignature,
-        XrefEntry, append_validation_store, complete_object_reference, dictionary_reference,
+        XrefEntry, XrefLocation, append_validation_store, complete_object_reference,
+        dictionary_reference,
         existing_field_names, last_object_header, last_reference, object_body, plan_annotation,
         plan_field_list, prepare, prepare_document_timestamp, validation_references,
     };
@@ -2555,6 +2640,166 @@ mod tests {
         pdf
     }
 
+    /// Like [`minimal_pdf`], closed by a cross-reference stream with
+    /// the catalog, page tree and page inside an object stream -- the
+    /// shape PDF 1.5 writers emit (ISO 32000-1 sec.7.5.7, sec.7.5.8).
+    /// With `encoded`, the entry rows go behind the PNG Up predictor
+    /// and `FlateDecode`.
+    fn stream_pdf(encoded: bool) -> Vec<u8> {
+        let bodies = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+        ];
+        let mut header = String::new();
+        let mut contents = String::new();
+        for (index, body) in bodies.iter().enumerate() {
+            let _ignored = core::fmt::Write::write_fmt(
+                &mut header,
+                format_args!("{} {} ", index + 1, contents.len()),
+            );
+            contents.push_str(body);
+            contents.push('\n');
+        }
+        let payload = format!("{header}{contents}");
+        let mut pdf = Vec::from("%PDF-1.7\n");
+        let container_at = pdf.len();
+        pdf.extend_from_slice(
+            format!(
+                "4 0 obj\n<< /Type /ObjStm /N {} /First {} /Length {} \
+                 >>\nstream\n{payload}\nendstream\nendobj\n",
+                bodies.len(),
+                header.len(),
+                payload.len()
+            )
+            .as_bytes(),
+        );
+        let xref_at = pdf.len();
+        // One row per object: type, two offset bytes, two more bytes.
+        let mut rows: Vec<u8> = vec![0, 0, 0, 0, 0];
+        for position in 0..bodies.len() {
+            rows.push(2);
+            rows.extend_from_slice(&4_u16.to_be_bytes());
+            rows.extend_from_slice(
+                &u16::try_from(position).expect("small fixture").to_be_bytes(),
+            );
+        }
+        for offset in [container_at, xref_at] {
+            rows.push(1);
+            rows.extend_from_slice(
+                &u16::try_from(offset).expect("small fixture").to_be_bytes(),
+            );
+            rows.extend_from_slice(&0_u16.to_be_bytes());
+        }
+        let parameters = if encoded {
+            rows = miniz_oxide::deflate::compress_to_vec_zlib(&up_predicted(&rows, 5), 6);
+            " /Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 5 >>"
+        } else {
+            ""
+        };
+        pdf.extend_from_slice(
+            format!(
+                "5 0 obj\n<< /Type /XRef /Size 6 /Root 1 0 R /W [1 2 2]{parameters} \
+                 /Length {} >>\nstream\n",
+                rows.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(&rows);
+        pdf.extend_from_slice(
+            format!("\nendstream\nendobj\nstartxref\n{xref_at}\n%%EOF\n").as_bytes(),
+        );
+        pdf
+    }
+
+    /// The rows as PNG Up rows, each relative to the one above.
+    fn up_predicted(rows: &[u8], columns: usize) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut above = vec![0_u8; columns];
+        for row in rows.chunks_exact(columns) {
+            out.push(2);
+            for (column, byte) in row.iter().enumerate() {
+                out.push(byte.wrapping_sub(above[column]));
+            }
+            above = row.to_vec();
+        }
+        out
+    }
+
+    #[test]
+    fn signs_behind_a_cross_reference_stream() {
+        let pdf = stream_pdf(false);
+        let signed = prepare(&pdf, &SignatureMetadata::default(), 64)
+            .expect("a stream-indexed PDF prepares")
+            .document;
+        let update = String::from_utf8_lossy(&signed[pdf.len()..]).into_owned();
+        assert!(signed.starts_with(&pdf), "the original bytes survive");
+        assert!(
+            update.contains("/SubFilter /ETSI.CAdES.detached"),
+            "the signature dictionary is written"
+        );
+    }
+
+    #[test]
+    fn the_stream_revision_is_closed_with_a_stream() {
+        let pdf = stream_pdf(false);
+        let signed = prepare(&pdf, &SignatureMetadata::default(), 64)
+            .expect("prepares")
+            .document;
+        let update = String::from_utf8_lossy(&signed[pdf.len()..]).into_owned();
+        assert!(update.contains("/Type /XRef"), "closed by a stream");
+        assert!(
+            !update.contains("trailer"),
+            "no classic trailer on a stream chain"
+        );
+        assert!(update.contains("/Prev "), "the chain continues");
+    }
+
+    #[test]
+    fn the_catalog_is_read_out_of_the_object_stream() {
+        let pdf = stream_pdf(false);
+        let signed = prepare(&pdf, &SignatureMetadata::default(), 64)
+            .expect("prepares")
+            .document;
+        let update = String::from_utf8_lossy(&signed[pdf.len()..]).into_owned();
+        assert!(
+            update.contains("/Type /Catalog") && update.contains("/AcroForm"),
+            "the catalog is reissued with the form"
+        );
+    }
+
+    #[test]
+    fn its_own_stream_revision_can_be_extended() {
+        let once = prepare(&stream_pdf(false), &SignatureMetadata::default(), 64)
+            .expect("first revision prepares")
+            .finish(&[1])
+            .expect("first signature fits");
+        let again = prepare_document_timestamp(&once, 64)
+            .expect("the writer re-reads its own stream revision")
+            .document;
+        assert!(again.starts_with(&once), "the chain grows in place");
+    }
+
+    #[test]
+    fn flate_and_up_predictor_are_decoded() {
+        let signed = prepare(&stream_pdf(true), &SignatureMetadata::default(), 64)
+            .expect("an encoded stream section decodes")
+            .document;
+        let text = String::from_utf8_lossy(&signed);
+        assert!(text.contains("/AcroForm"), "the catalog was reachable");
+    }
+
+    #[test]
+    fn the_validation_store_is_appended_behind_a_stream() {
+        let pdf = stream_pdf(false);
+        let stored = append_validation_store(&pdf, &[vec![1, 2, 3]], &[], &[])
+            .expect("the store appends behind a stream chain");
+        let update = String::from_utf8_lossy(&stored[pdf.len()..]).into_owned();
+        assert!(update.contains("/Type /DSS"), "the store is written");
+        assert!(update.contains("/Type /XRef"), "closed by a stream");
+        assert!(!update.contains("trailer"), "no classic trailer");
+    }
+
     fn fragment_index(pdf: &[u8]) -> PdfIndex<'_> {
         let mut objects = Vec::new();
         for number in 1..32 {
@@ -2563,8 +2808,7 @@ mod tests {
                 objects.push(XrefEntry {
                     number,
                     generation: 0,
-                    offset,
-                    in_use: true,
+                    location: XrefLocation::Direct { offset },
                 });
             }
         }
@@ -2572,6 +2816,7 @@ mod tests {
             pdf,
             trailer: Vec::new(),
             start_xref: 0,
+            newest_is_stream: false,
             objects,
         }
     }
