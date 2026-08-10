@@ -1,0 +1,27 @@
+#!/bin/sh
+# postrm for refineid - post-removal hooks.
+set -e
+
+case "$1" in
+    purge)
+        # Conf-files (policies.json, polkit rule) are removed by
+        # dpkg automatically on `purge`; nothing for us to clean
+        # up beyond running ldconfig.
+        if command -v ldconfig >/dev/null 2>&1; then
+            ldconfig
+        fi
+        ;;
+    remove|upgrade|disappear|abort-install|abort-upgrade|failed-upgrade)
+        if command -v ldconfig >/dev/null 2>&1; then
+            ldconfig
+        fi
+        ;;
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

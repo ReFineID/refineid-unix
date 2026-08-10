@@ -1,0 +1,7 @@
+{
+  "policies": {
+    "SecurityDevices": {
+      "FINEID": "/usr/lib/librefineid_pkcs11.so"
+    }
+  }
+}
