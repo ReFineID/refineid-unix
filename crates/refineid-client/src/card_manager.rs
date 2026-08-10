@@ -154,7 +154,8 @@ pub fn read_images(
     crate::card_emrtd::read_first(PcscBackend, &options)
 }
 
-/// Produce a visible qualified `PAdES-LTA` signature.
+/// Produce a qualified `PAdES-LTA` signature, visibly marked only when
+/// a card access number was supplied.
 ///
 /// The visible name and SATU are resolved from the live signing certificate;
 /// the request carries only the displayed card serial and optional DG7 ink.
@@ -184,9 +185,15 @@ pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
             ),
         });
     }
+    // The card access number is the stamp request: entering one is how
+    // the holder asks for a visible mark, and it is also what reads the
+    // card's ink. Without one the signature stays invisible, as it does
+    // in every other client -- a mark with nothing behind it is not a
+    // smaller stamp, it is a wrong one.
+    let visible_signature = can.is_some().then_some(VisibleSignatureRequest { handwriting });
     let document = pdf_document_request(
         expected_serial,
-        handwriting,
+        visible_signature,
         timestamp_authority,
         timestamp_credentials,
     );
@@ -274,7 +281,7 @@ pub fn sign_asice(options: AsicSignOptions) -> Result<SignReport, SignErrorKind>
 
 fn pdf_document_request(
     expected_serial: TokenSerial,
-    handwriting: Option<SignatureInk>,
+    visible_signature: Option<VisibleSignatureRequest>,
     timestamp_authority: String,
     timestamp_credentials: Option<TimestampCredentials>,
 ) -> DocumentRequest {
@@ -292,7 +299,7 @@ fn pdf_document_request(
         },
         metadata: SignatureMetadata::default(),
         expected_serial: Some(expected_serial),
-        visible_signature: Some(VisibleSignatureRequest { handwriting }),
+        visible_signature,
         archive: true,
         long_term: true,
         timestamp_authorities: vec![timestamp_authority],
@@ -375,7 +382,7 @@ fn ensure_displayed_serial(
 mod tests {
     use refineid_lib_core::identity::TokenSerial;
 
-    use super::{ensure_displayed_serial, pdf_document_request};
+    use super::{VisibleSignatureRequest, ensure_displayed_serial, pdf_document_request};
 
     #[test]
     fn displayed_serial_mismatch_is_refused() {
@@ -395,7 +402,7 @@ mod tests {
         let serial = TokenSerial::new("same-card".to_owned());
         let request = pdf_document_request(
             serial.clone(),
-            None,
+            Some(VisibleSignatureRequest { handwriting: None }),
             "https://timestamp.sectigo.com/qualified".to_owned(),
             None,
         );
@@ -414,5 +421,16 @@ mod tests {
             .visible_signature
             .expect("visible signature request");
         assert!(visible.handwriting.is_none());
+    }
+
+    #[test]
+    fn no_visible_signature_is_requested_without_one() {
+        let request = pdf_document_request(
+            TokenSerial::new("same-card".to_owned()),
+            None,
+            "https://timestamp.sectigo.com/qualified".to_owned(),
+            None,
+        );
+        assert!(request.visible_signature.is_none());
     }
 }
