@@ -179,8 +179,8 @@ pub struct ChainStart<'a> {
     pub include_leaf: bool,
     /// Whether the exact approved terminal certificate belongs in the
     /// output store. A card root can be omitted because it is already a
-    /// local trust decision; a trusted-list service identity must travel
-    /// with the TSA path so an offline validator can reconstruct it.
+    /// local trust decision; a TSA path's anchor must travel with the
+    /// path so an offline validator can reconstruct it.
     pub include_anchor: bool,
 }
 
@@ -1370,7 +1370,7 @@ mod tests {
         check(
             &material.certificates,
             &vec![DVV_INTERMEDIATE_DER.to_vec(), DVV_ROOT_ECC_DER.to_vec()],
-            "complete timestamp path including trusted-list identity",
+            "complete timestamp path including its anchor",
         )
     }
 

@@ -356,9 +356,9 @@ subcommands:
                      Default: http://timestamp.sectigo.com/qualified.
                      Repeat for alternatives; a failed answer is
                      skipped, and signing fails when none remains.
-                     --timestamp eu-qualified uses public EU endpoints
-                     and keeps only signers currently granted as
-                     qualified on the authenticated EU trusted lists.
+                     --timestamp eu-qualified names public EU
+                     endpoints; whoever configures an authority
+                     answers for its standing.
         --no-archive    stop at level LT: no archive timestamp
         --no-long-term  stop at level T: no embedded evidence
         --no-timestamp  sign at level B: no authority contacted, the

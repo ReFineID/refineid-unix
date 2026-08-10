@@ -60,7 +60,6 @@ pub mod http;
 pub mod reader_keyboard;
 pub mod text;
 pub mod trust_roots;
-pub mod trusted_list;
 pub mod user_agent;
 pub mod validation_material;
 pub mod verify;

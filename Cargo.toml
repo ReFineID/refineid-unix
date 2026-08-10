@@ -53,12 +53,6 @@ sha1 = "0.11"
 hickory-resolver = { version = "0.26.1", default-features = false, features = ["dnssec-ring", "system-config", "tokio"] }
 tokio = { version = "1", default-features = false, features = ["net", "rt", "time"] }
 
-# Signed EU trusted-list XML. `xml-sec` is used only for its pure-Rust
-# canonical XML implementation; signature algorithm selection, key pinning
-# and profile validation stay in refineid's typed verification layer.
-roxmltree = { version = "0.21", features = ["positions"] }
-xml-sec = { version = "0.1.10", default-features = false, features = ["c14n"] }
-
 # Random generation for session-local secrets.
 getrandom = "0.4"
 

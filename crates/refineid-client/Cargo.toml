@@ -24,7 +24,7 @@ workspace = true
 # authorities that publish only an HTTPS endpoint.
 default = ["tls-rustls"]
 # Server-authenticated HTTPS support for public infrastructure
-# fetches (TSAs, EU trusted lists, validator APIs). Requires a TLS
+# fetches (TSAs, validator APIs). Requires a TLS
 # backend feature at runtime; without one the HTTPS path reports
 # that no backend was compiled.
 https = ["dep:refineid-lib-tls"]
@@ -52,11 +52,6 @@ sha1.workspace = true
 # on unsigned or DNSSEC-unavailable networks.
 hickory-resolver.workspace = true
 tokio.workspace = true
-# Signed EU LOTL/national-list parsing and canonicalization. External
-# entities and external XMLDSig references are rejected by policy before
-# canonicalization.
-roxmltree.workspace = true
-xml-sec.workspace = true
 sha2.workspace = true
 # Echo-off PIN prompt for `card sign-auth`. PIN bytes never reach
 # argv, env, or any log line.

@@ -162,7 +162,7 @@ pub fn read_images(
 ///
 /// # Errors
 /// Reader/card access, card-swap binding, PIN, document construction,
-/// timestamp, trusted-list, revocation-evidence, or output-write failure.
+/// timestamp, revocation-evidence, or output-write failure.
 pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
     let PdfSignOptions {
         input,
@@ -215,7 +215,7 @@ pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
 ///
 /// # Errors
 /// Reader/card access, PIN, document construction, timestamp,
-/// trusted-list, revocation-evidence, or output-write failure.
+/// revocation-evidence, or output-write failure.
 pub fn sign_asice(options: AsicSignOptions) -> Result<SignReport, SignErrorKind> {
     let AsicSignOptions {
         input,
@@ -257,7 +257,6 @@ pub fn sign_asice(options: AsicSignOptions) -> Result<SignReport, SignErrorKind>
         long_term: true,
         timestamp_authorities: vec![timestamp_authority],
         timestamp_credentials,
-        require_qualified_timestamps: true,
     };
     crate::card_sign::sign_qualified_first(
         PcscBackend,
@@ -298,7 +297,6 @@ fn pdf_document_request(
         long_term: true,
         timestamp_authorities: vec![timestamp_authority],
         timestamp_credentials,
-        require_qualified_timestamps: true,
     }
 }
 
@@ -407,7 +405,6 @@ mod tests {
         );
         assert!(request.archive);
         assert!(request.long_term);
-        assert!(request.require_qualified_timestamps);
         assert_eq!(
             request.timestamp_authorities,
             ["https://timestamp.sectigo.com/qualified"]

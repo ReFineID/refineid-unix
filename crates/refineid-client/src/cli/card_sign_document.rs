@@ -89,10 +89,6 @@ pub struct SignDocumentArgs {
     /// is worth having when the certificate outlives the news cycle of
     /// any particular trust service provider.
     pub timestamp_authorities: Vec<String>,
-    /// Whether returned timestamp signers must prove current EU
-    /// qualified status through the authenticated trusted-list
-    /// directory.
-    pub require_qualified_timestamps: bool,
 }
 
 impl SignDocumentArgs {
@@ -109,7 +105,6 @@ impl SignDocumentArgs {
             reader_filter,
             can,
             timestamp_authorities,
-            require_qualified_timestamps,
             long_term,
             archive,
         } = self;
@@ -157,7 +152,6 @@ impl SignDocumentArgs {
                     visible_signature: None,
                     timestamp_authorities: timestamp_authorities.clone(),
                     timestamp_credentials: None,
-                    require_qualified_timestamps,
                     long_term,
                     archive,
                 }),
@@ -175,14 +169,7 @@ impl SignDocumentArgs {
             result = run_once(Some(prompted));
         }
 
-        report_outcome(
-            cmd,
-            result,
-            format,
-            long_term,
-            archive,
-            require_qualified_timestamps,
-        )
+        report_outcome(cmd, result, format, long_term, archive)
     }
 
     /// Parse the post-subcommand argv slice.
@@ -203,7 +190,6 @@ impl SignDocumentArgs {
         let mut reader_filter: Option<String> = None;
         let mut can_raw: Option<String> = None;
         let mut timestamp_authorities: Vec<String> = Vec::new();
-        let mut require_qualified_timestamps = false;
         let mut no_timestamp = false;
         let mut no_long_term = false;
         let mut no_archive = false;
@@ -228,9 +214,7 @@ impl SignDocumentArgs {
                 "--can" => can_raw = Some(value_for("--can")?.clone()),
                 "--timestamp" => {
                     let value = value_for("--timestamp")?.clone();
-                    let expanded = expand_authority(&value)?;
-                    require_qualified_timestamps |= expanded.requires_eu_qualification;
-                    for url in expanded.urls {
+                    for url in expand_authority(&value)? {
                         // Asking one authority twice yields two tokens
                         // from the same unit under the same anchor,
                         // which is a round trip for no extra evidence.
@@ -265,7 +249,6 @@ impl SignDocumentArgs {
             long_term,
             archive,
             timestamp_authorities,
-            require_qualified_timestamps,
             no_timestamp,
             no_long_term,
             no_archive,
@@ -294,7 +277,6 @@ impl SignDocumentArgs {
         long_term: bool,
         archive: bool,
         mut timestamp_authorities: Vec<String>,
-        require_qualified_timestamps: bool,
         no_timestamp: bool,
         no_long_term: bool,
         no_archive: bool,
@@ -360,7 +342,6 @@ impl SignDocumentArgs {
             no_long_term,
             no_archive,
         )?;
-        let require_qualified_timestamps = require_qualified_timestamps || long_term;
         check_level_is_reachable(long_term, timestamp_authorities.len())?;
         let can = can_raw
             .map(|raw| {
@@ -385,18 +366,12 @@ impl SignDocumentArgs {
             archive,
             long_term,
             timestamp_authorities,
-            require_qualified_timestamps,
         })
     }
 }
 
 /// The ETSI level the requested options add up to.
-fn describe_level(
-    timestamp_tokens: usize,
-    long_term: bool,
-    archive: bool,
-    qualified: bool,
-) -> String {
+fn describe_level(timestamp_tokens: usize, long_term: bool, archive: bool) -> String {
     // A successful archive operation adds exactly one outer token. It
     // may come from the same authority as an inner signature token, so
     // do not report the total token count as distinct authorities.
@@ -408,9 +383,6 @@ fn describe_level(
     };
     match (signature_timestamps, long_term, archive) {
         (0, _, _) => "B (time claimed by the signer)".to_owned(),
-        (n, false, _) if qualified => {
-            format!("B-T (time attested by {n} EU-qualified timestamp {plural})")
-        }
         (n, false, _) => format!("B-T (time attested by {n} timestamp {plural})"),
         (n, true, false) => {
             format!("B-LT (time attested by {n} timestamp {plural}, evidence embedded)")
@@ -428,11 +400,10 @@ fn report_outcome(
     format: Format,
     long_term: bool,
     archive: bool,
-    qualified: bool,
 ) -> std::process::ExitCode {
     match result {
         Ok(report) => {
-            let level = describe_level(report.timestamps, long_term, archive, qualified);
+            let level = describe_level(report.timestamps, long_term, archive);
             print!("{report}");
             println!("format:           {}", format_label(format));
             println!("signature level:  {level}");
@@ -587,10 +558,9 @@ fn now_signing_time() -> SigningTime {
     }
 }
 
-/// Candidate endpoints for `--timestamp eu-qualified`, in request
-/// order. This table does not confer trust: every returned signer is
-/// checked against the live, authenticated EU trusted-list directory.
-/// Named sets `--timestamp` accepts in place of a URL.
+/// Named sets `--timestamp` accepts in place of a URL, in request
+/// order. Naming a set confers nothing beyond the URLs it stands for:
+/// whoever configures an authority answers for its standing.
 const AUTHORITY_SETS: &[(&str, &[&str])] = &[("eu-qualified", EU_QUALIFIED_TIMESTAMP_AUTHORITIES)];
 
 /// One `--timestamp` value as the URLs it stands for.
@@ -610,24 +580,13 @@ const AUTHORITY_SETS: &[(&str, &[&str])] = &[("eu-qualified", EU_QUALIFIED_TIMES
 ///
 /// # Errors
 /// [`ArgParseError::BadValue`] for a name that is not a known set.
-struct ExpandedAuthority {
-    urls: Vec<String>,
-    requires_eu_qualification: bool,
-}
-
-fn expand_authority(value: &str) -> Result<ExpandedAuthority, ArgParseError> {
+fn expand_authority(value: &str) -> Result<Vec<String>, ArgParseError> {
     if value.contains("://") {
-        return Ok(ExpandedAuthority {
-            urls: vec![value.to_owned()],
-            requires_eu_qualification: false,
-        });
+        return Ok(vec![value.to_owned()]);
     }
     for (name, urls) in AUTHORITY_SETS {
         if value == *name {
-            return Ok(ExpandedAuthority {
-                urls: urls.iter().map(|u| (*u).to_owned()).collect(),
-                requires_eu_qualification: true,
-            });
+            return Ok(urls.iter().map(|u| (*u).to_owned()).collect());
         }
     }
     let known = AUTHORITY_SETS
@@ -788,7 +747,7 @@ mod tests {
     #[test]
     fn archive_level_does_not_count_outer_token_as_another_authority() -> TestResult {
         check(
-            &describe_level(2, true, true, true),
+            &describe_level(2, true, true),
             &"B-LTA (time attested by 1 timestamp authority, evidence embedded, plus one archive timestamp)".to_owned(),
             "one signature token plus one archive token",
         )
@@ -925,10 +884,6 @@ mod tests {
             &a.timestamp_authorities[0].as_str(),
             &"https://timestamp.aped.gov.gr/qtss",
             "best first",
-        )?;
-        check_true(
-            a.require_qualified_timestamps,
-            "named set requires authenticated EU qualification",
         )
     }
 
@@ -954,8 +909,7 @@ mod tests {
             &a.timestamp_authorities[2].as_str(),
             &"http://tsa.example/tsa",
             "own authority kept",
-        )?;
-        check_true(a.require_qualified_timestamps, "set policy retained")
+        )
     }
 
     #[test]
@@ -971,10 +925,7 @@ mod tests {
             "https://tsa.example/tsa",
             "--no-long-term",
         ]))?;
-        check_true(
-            !level_t.require_qualified_timestamps,
-            "direct level-T URL leaves trust policy to caller",
-        )?;
+        check_true(!level_t.long_term, "an explicit level T stays at T")?;
 
         let defaulted = SignDocumentArgs::parse(argv(&[
             "--format",
@@ -986,10 +937,7 @@ mod tests {
             "--timestamp",
             "https://tsa.example/tsa",
         ]))?;
-        check_true(
-            defaulted.require_qualified_timestamps,
-            "the LT/LTA default requires an authenticated timestamp trust decision",
-        )
+        check_true(defaulted.long_term, "the default level embeds evidence")
     }
 
     #[test]

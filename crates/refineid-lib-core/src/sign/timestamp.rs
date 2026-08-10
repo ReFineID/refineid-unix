@@ -34,10 +34,10 @@
 //! defence in depth, but none of these checks relies on it.
 //!
 //! What is not checked in this core parser is the dynamic trust path:
-//! whether the authenticated TSA certificate chains to an anchor that a
-//! current trusted list authorises for timestamping. [`verified_token`]
-//! returns the signer certificate and `genTime` so the client can apply
-//! that trusted-list state without weakening the cryptographic checks
+//! whether the authenticated TSA certificate chains to an anchor the
+//! caller trusts for timestamping. [`verified_token`] returns the
+//! signer certificate and `genTime` so the client can apply its own
+//! authority trust decision without weakening the cryptographic checks
 //! performed here.
 //!
 //! # Conformance

@@ -64,7 +64,6 @@ use refineid_lib_core::x509::{
 use refineid_lib_pcsc::{PcscBackend, PcscError};
 use zeroize::Zeroizing;
 
-use crate::trusted_list::TrustedTimestampIdentities;
 use crate::validation_material::{ChainStart, NoncePolicy};
 
 /// Maximum tolerated difference between this host and a live TSA.
@@ -81,9 +80,9 @@ const TIMESTAMP_RETRY_MAX_DELAY: core::time::Duration = core::time::Duration::fr
 
 /// Candidate EU-qualified timestamp endpoints used by first-party clients.
 ///
-/// This list grants no trust. Every returned token is cryptographically
-/// verified and its signer checked against the authenticated EU trusted-list
-/// directory before it is retained.
+/// Whoever configures an authority answers for it: every returned
+/// token is cryptographically verified against the request digest and
+/// nonce, and nothing beyond that is checked about the operator.
 pub const EU_QUALIFIED_TIMESTAMP_AUTHORITIES: &[&str] = &[
     "https://timestamp.aped.gov.gr/qtss",
     "http://tss.accv.es:8318/tsa",
@@ -298,14 +297,6 @@ pub struct DocumentRequest {
     /// Credentials are deliberately limited to one authority so they can
     /// never be replayed to a fallback host.
     pub timestamp_credentials: Option<TimestampCredentials>,
-    /// Require every retained timestamp signer to be a currently
-    /// granted qualified service in the authenticated EU trusted-list
-    /// directory.
-    ///
-    /// The named `eu-qualified` set enables this at level T. Level
-    /// LT/LTA also enables it because embedded evidence cannot rest on
-    /// an unauthenticated timestamp trust decision.
-    pub require_qualified_timestamps: bool,
 }
 
 /// User-interface material for a certificate-derived visible PDF signature.
@@ -330,12 +321,9 @@ impl DocumentRequest {
     /// [`Self::requires_long_term_material`]; this only catches missing
     /// authorities and formats whose archive construction is absent.
     fn validate_signing_policy(&self) -> Result<(), SignErrorKind> {
-        if (self.requires_long_term_material() || self.require_qualified_timestamps)
-            && self.timestamp_authorities.is_empty()
-        {
+        if self.requires_long_term_material() && self.timestamp_authorities.is_empty() {
             return Err(SignErrorKind::Timestamp(
-                "qualified, LT, and LTA signatures need at least one timestamp authority"
-                    .to_owned(),
+                "LT and LTA signatures need at least one timestamp authority".to_owned(),
             ));
         }
         if self.timestamp_credentials.is_some() {
@@ -1349,16 +1337,16 @@ fn require_live_timestamp_time(
 struct CollectedTimestamps {
     tokens: Vec<VerifiedTimestampToken>,
     material: ValidationMaterial,
-    qualified_directory: Option<TrustedTimestampIdentities>,
 }
 
-/// Obtain and authenticate every signature timestamp that remains usable.
+/// Obtain and verify every signature timestamp that remains usable.
 ///
-/// Authorities are alternatives: a refused or unqualified answer is
-/// reported and skipped, while loss of every requested answer is fatal.
-/// Every token subject to the qualified-service policy also has its
-/// complete current revocation status checked before it enters the
-/// result. LT/LTA retains that evidence; level T checks and discards it.
+/// Authorities are alternatives: a refused answer is reported and
+/// skipped, while loss of every requested answer is fatal. The
+/// authority itself is trusted as configured -- whoever names one
+/// answers for it. LT/LTA additionally collects chain and current
+/// revocation evidence for each retained token, anchored on the
+/// certificates the token itself carries.
 fn collect_document_timestamps(
     request: Option<&DocumentRequest>,
     authorities: &[String],
@@ -1366,20 +1354,6 @@ fn collect_document_timestamps(
     parameters: &SignerParameters<'_>,
     signature_bytes: &[u8],
 ) -> Result<CollectedTimestamps, SignErrorKind> {
-    let requires_qualified_timestamp = request.is_some_and(|request| {
-        request.require_qualified_timestamps || request.requires_long_term_material()
-    });
-    let qualified_directory = if requires_qualified_timestamp {
-        Some(
-            crate::trusted_list::qualified_timestamp_identities().map_err(|e| {
-                SignErrorKind::Timestamp(format!(
-                    "cannot authenticate the EU qualified timestamp directory: {e}"
-                ))
-            })?,
-        )
-    } else {
-        None
-    };
     let keep_material = request.is_some_and(DocumentRequest::requires_long_term_material);
     let credentials = request.and_then(|request| request.timestamp_credentials.as_ref());
     let mut tokens = Vec::with_capacity(authorities.len());
@@ -1401,13 +1375,12 @@ fn collect_document_timestamps(
                 continue;
             }
         };
-        if let Some(directory) = qualified_directory.as_ref() {
-            match authenticate_qualified_timestamp(&token, directory, keep_material) {
-                Ok(Some(evidence)) => merge_material(&mut material, evidence),
-                Ok(None) => {}
+        if keep_material {
+            match timestamp_validation_material(&token) {
+                Ok(evidence) => merge_material(&mut material, evidence),
                 Err(why) => {
                     refusals.push(format!(
-                        "{url}: returned a cryptographically valid token, but its signer did not pass authenticated qualified-service and current-status validation: {why}"
+                        "{url}: returned a cryptographically valid token, but complete current validation evidence for its chain could not be collected: {why}"
                     ));
                     continue;
                 }
@@ -1431,11 +1404,7 @@ fn collect_document_timestamps(
     for refusal in &refusals {
         eprintln!("timestamp authority declined, continuing without it -- {refusal}");
     }
-    Ok(CollectedTimestamps {
-        tokens,
-        material,
-        qualified_directory,
-    })
+    Ok(CollectedTimestamps { tokens, material })
 }
 
 /// Fetch the timestamps and evidence a document signature asked for,
@@ -1467,7 +1436,6 @@ fn assemble_document(
     let CollectedTimestamps {
         tokens,
         material: mut timestamp_material,
-        qualified_directory,
     } = collect_document_timestamps(request, authorities, &plan, parameters, signature_bytes)?;
     let keep_material = request.is_some_and(DocumentRequest::requires_long_term_material);
     let material = if keep_material {
@@ -1516,11 +1484,6 @@ fn assemble_document(
             request.and_then(|request| request.timestamp_credentials.as_ref()),
             &digest,
             parameters.digest_algorithm,
-            qualified_directory.as_ref().ok_or_else(|| {
-                SignErrorKind::Timestamp(
-                    "archive timestamp has no authenticated qualified-service directory".to_owned(),
-                )
-            })?,
             &material,
         )?;
         let archived = plan
@@ -1548,12 +1511,6 @@ fn assemble_document(
                 authorities,
                 request.and_then(|request| request.timestamp_credentials.as_ref()),
                 parameters.digest_algorithm,
-                qualified_directory.as_ref().ok_or_else(|| {
-                    SignErrorKind::Timestamp(
-                        "archive timestamp has no authenticated qualified-service directory"
-                            .to_owned(),
-                    )
-                })?,
                 &material,
             )?,
             true,
@@ -1623,7 +1580,6 @@ fn archive_timestamp(
     urls: &[String],
     credentials: Option<&TimestampCredentials>,
     algorithm: DigestAlgorithm,
-    qualified_directory: &TrustedTimestampIdentities,
     covered_material: &ValidationMaterial,
 ) -> Result<Vec<u8>, SignErrorKind> {
     /// Room for the token. Generous: a token with the authority's
@@ -1636,7 +1592,6 @@ fn archive_timestamp(
         credentials,
         &placeholder.digest(algorithm),
         algorithm,
-        qualified_directory,
         covered_material,
     )?;
     placeholder
@@ -1656,7 +1611,6 @@ fn first_answering_token(
     credentials: Option<&TimestampCredentials>,
     digest: &[u8],
     algorithm: DigestAlgorithm,
-    qualified_directory: &TrustedTimestampIdentities,
     covered_material: &ValidationMaterial,
 ) -> Result<VerifiedTimestampToken, SignErrorKind> {
     let mut refusals = Vec::new();
@@ -1669,11 +1623,9 @@ fn first_answering_token(
             algorithm,
         ) {
             Ok(token) => {
-                if let Err(why) =
-                    authenticate_archive_timestamp(&token, qualified_directory, covered_material)
-                {
+                if let Err(why) = authenticate_archive_timestamp(&token, covered_material) {
                     refusals.push(format!(
-                        "{url} returned an archive timestamp without complete authenticated qualified-service evidence ({why}), trying the next"
+                        "{url} returned an archive timestamp without complete current validation evidence ({why}), trying the next"
                     ));
                     continue;
                 }
@@ -1695,8 +1647,8 @@ fn first_answering_token(
     }))
 }
 
-/// Prove the outer timestamp is qualified and has complete current
-/// validation evidence before selecting it.
+/// Prove the outer timestamp has complete current validation evidence
+/// before selecting it.
 ///
 /// The returned evidence is deliberately only an acceptance gate. It
 /// cannot be embedded in the revision the token signs without changing
@@ -1704,44 +1656,33 @@ fn first_answering_token(
 /// the preceding outer timestamp belongs.
 fn authenticate_archive_timestamp(
     token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
     covered_material: &ValidationMaterial,
 ) -> Result<(), String> {
-    authenticate_archive_timestamp_with(
-        token,
-        directory,
-        covered_material,
-        timestamp_validation_material,
-    )
+    authenticate_archive_timestamp_with(token, covered_material, timestamp_validation_material)
 }
 
 fn authenticate_archive_timestamp_with<F>(
     token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
     covered_material: &ValidationMaterial,
     collect_evidence: F,
 ) -> Result<(), String>
 where
-    F: FnOnce(
-        &VerifiedTimestampToken,
-        &TrustedTimestampIdentities,
-        &[Vec<u8>],
-    ) -> Result<ValidationMaterial, String>,
+    F: FnOnce(&VerifiedTimestampToken) -> Result<ValidationMaterial, String>,
 {
-    let path = qualified_timestamp_path(token, directory)?;
+    let path = embedded_timestamp_path(token)?;
     require_archive_path_covered(&path, covered_material)?;
-    let _verified_current_evidence = collect_evidence(token, directory, &path)?;
+    let _verified_current_evidence = collect_evidence(token)?;
     Ok(())
 }
 
-/// Require every certificate authenticated for the outer token to be
+/// Require every certificate verified for the outer token to be
 /// inside the LT store that token is about to cover.
 ///
 /// Exact DER comparison includes the TSA leaf, intermediates, and the
-/// trusted-list service identity. A signer rotation after the inner
-/// signature timestamps were collected therefore moves to the next
-/// authority instead of producing an archive whose path is outside its
-/// signed validation store.
+/// chain's anchor. A signer rotation after the inner signature
+/// timestamps were collected therefore moves to the next authority
+/// instead of producing an archive whose path is outside its signed
+/// validation store.
 fn require_archive_path_covered(
     path: &[Vec<u8>],
     covered_material: &ValidationMaterial,
@@ -1761,31 +1702,17 @@ fn require_archive_path_covered(
     )
 }
 
-/// Authenticate one timestamp signer to a service identity whose
-/// trusted-list grant had already begun when the token was generated.
+/// The token's certificate path, verified within its own embedded
+/// chain.
 ///
-/// The listed identity may be the signer itself or a service CA above
-/// it, so exact certificate membership alone is insufficient. Filtering
-/// the anchors by `StatusStartingTime` before path construction makes
-/// the path result prove both facts together.
-fn qualified_timestamp_path(
-    token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
-) -> Result<Vec<Vec<u8>>, String> {
-    if token.generated_at >= directory.valid_until {
-        return Err(
-            "the token generation time is outside the trusted directory's signed validity window"
-                .to_owned(),
-        );
-    }
-    let applicable_anchors: Vec<&[u8]> = directory
-        .identities
-        .iter()
-        .filter(|identity| token.generated_at >= identity.granted_from)
-        .map(|identity| identity.certificate_der.as_slice())
-        .collect();
-    if applicable_anchors.is_empty() {
-        return Err("the directory has no grant effective at the token generation time".to_owned());
+/// The authority is trusted as configured -- whoever names one answers
+/// for it. What is still verified is internal consistency: the signer
+/// must chain, with valid signatures and validity windows, to an
+/// anchor the token itself carries.
+fn embedded_timestamp_path(token: &VerifiedTimestampToken) -> Result<Vec<Vec<u8>>, String> {
+    let anchors = embedded_anchor_ders(token);
+    if anchors.is_empty() {
+        return Err("the token embeds no certificate usable as its chain anchor".to_owned());
     }
     let embedded: Vec<&[u8]> = token
         .embedded_certificates
@@ -1795,82 +1722,63 @@ fn qualified_timestamp_path(
     crate::validation_material::verify_chain_to_approved_anchor(
         &token.signer_certificate,
         token.generated_at,
-        &applicable_anchors,
+        &anchors,
         &embedded,
     )
-    .map_err(|e| {
-        let coverage = if directory.is_complete {
-            "complete"
-        } else {
-            "partially available"
-        };
-        format!("no valid path to the {coverage} authenticated directory: {e}")
-    })
+    .map_err(|e| format!("no valid path within the token's embedded chain: {e}"))
 }
 
-/// Authenticate a qualified TSA path and require complete current
-/// revocation status for every non-anchor certificate.
+/// The embedded certificates a token's path may stop at: the
+/// self-issued ones, or every embedded certificate when none is.
 ///
-/// Level T deliberately discards the returned status objects after the
-/// validation gate. LT and LTA retain them for their validation store.
-fn authenticate_qualified_timestamp(
-    token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
-    retain_evidence: bool,
-) -> Result<Option<ValidationMaterial>, String> {
-    authenticate_qualified_timestamp_with(
-        token,
-        directory,
-        retain_evidence,
-        timestamp_validation_material,
-    )
+/// Preferring self-issued anchors makes the path run as deep as the
+/// token allows, so LT evidence covers the intermediates rather than
+/// stopping at the signer's immediate issuer.
+fn embedded_anchor_ders(token: &VerifiedTimestampToken) -> Vec<&[u8]> {
+    let self_issued: Vec<&[u8]> = token
+        .embedded_certificates
+        .iter()
+        .filter(|der| {
+            OwnedCert::from_der(der).is_ok_and(|certificate| {
+                let view = certificate.view();
+                view.issuer.as_der() == view.subject.as_der()
+            })
+        })
+        .map(Vec::as_slice)
+        .collect();
+    if self_issued.is_empty() {
+        token
+            .embedded_certificates
+            .iter()
+            .map(Vec::as_slice)
+            .collect()
+    } else {
+        self_issued
+    }
 }
 
-fn authenticate_qualified_timestamp_with<F>(
-    token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
-    retain_evidence: bool,
-    collect_evidence: F,
-) -> Result<Option<ValidationMaterial>, String>
-where
-    F: FnOnce(
-        &VerifiedTimestampToken,
-        &TrustedTimestampIdentities,
-        &[Vec<u8>],
-    ) -> Result<ValidationMaterial, String>,
-{
-    let path = qualified_timestamp_path(token, directory)?;
-    let evidence = collect_evidence(token, directory, &path)?;
-    Ok(retain_evidence.then_some(evidence))
-}
-
+/// Collect chain and current revocation evidence for one token,
+/// anchored on the certificates the token itself carries.
+///
+/// LT and LTA retain the result for their validation store; level T
+/// has no store and skips this entirely.
 fn timestamp_validation_material(
     token: &VerifiedTimestampToken,
-    directory: &TrustedTimestampIdentities,
-    verified_path: &[Vec<u8>],
 ) -> Result<ValidationMaterial, String> {
-    let applicable_anchors: Vec<&[u8]> = directory
-        .identities
-        .iter()
-        .filter(|identity| token.generated_at >= identity.granted_from)
-        .map(|identity| identity.certificate_der.as_slice())
-        .collect();
-    let mut candidates: Vec<&[u8]> = token
+    let anchors = embedded_anchor_ders(token);
+    if anchors.is_empty() {
+        return Err("the token embeds no certificate usable as its chain anchor".to_owned());
+    }
+    let candidates: Vec<&[u8]> = token
         .embedded_certificates
         .iter()
         .map(Vec::as_slice)
         .collect();
-    for certificate in verified_path {
-        let der = certificate.as_slice();
-        if !candidates.contains(&der) {
-            candidates.push(der);
-        }
-    }
     crate::validation_material::collect_chains_with_candidates(
         &[ChainStart {
             leaf_der: &token.signer_certificate,
             reference_time: token.generated_at,
-            approved_anchor_ders: &applicable_anchors,
+            approved_anchor_ders: &anchors,
             nonce_policy: NoncePolicy::AllowMissingEcho,
             include_leaf: true,
             include_anchor: true,
@@ -2096,7 +2004,6 @@ impl fmt::Display for SignReport {
 mod tests {
     use super::*;
     use crate::test_util::{TestResult, check, check_true};
-    use crate::trusted_list::TrustedTimestampIdentity;
     use refineid_lib_core::apdu::status_word::PinRetries;
 
     // ---- SignSlot: the FINEID slot -> {key ref, PIN, cert}
@@ -2255,7 +2162,6 @@ mod tests {
             long_term: false,
             timestamp_authorities: Vec::new(),
             timestamp_credentials: None,
-            require_qualified_timestamps: false,
         };
         check_true(
             request.requires_long_term_material(),
@@ -2327,77 +2233,43 @@ mod tests {
         )
     }
 
-    fn exact_trusted_identity_fixture()
-    -> Result<(VerifiedTimestampToken, TrustedTimestampIdentities), Box<dyn core::error::Error>>
-    {
+    fn self_anchored_token_fixture()
+    -> Result<VerifiedTimestampToken, Box<dyn core::error::Error>> {
         let signer_der = crate::trust_roots::PINNED_ROOT_DER
             .first()
             .map(|(_label, der)| *der)
             .ok_or("missing test trust anchor")?;
         let signer = OwnedCert::from_der(signer_der)?;
         let generated_at = signer.view().not_before;
-        Ok((
-            VerifiedTimestampToken {
-                token: vec![1],
-                signer_certificate: signer_der.to_vec(),
-                embedded_certificates: vec![signer_der.to_vec()],
-                generated_at,
-            },
-            TrustedTimestampIdentities {
-                identities: vec![TrustedTimestampIdentity {
-                    certificate_der: signer_der.to_vec(),
-                    granted_from: generated_at,
-                }],
-                is_complete: false,
-                valid_until: signer.view().not_after,
-            },
-        ))
+        Ok(VerifiedTimestampToken {
+            token: vec![1],
+            signer_certificate: signer_der.to_vec(),
+            embedded_certificates: vec![signer_der.to_vec()],
+            generated_at,
+        })
     }
 
     #[test]
-    fn qualified_path_uses_effective_exact_trusted_list_identity() -> TestResult {
-        let (token, directory) = exact_trusted_identity_fixture()?;
-        let path = qualified_timestamp_path(&token, &directory)?;
+    fn embedded_path_terminates_at_the_tokens_own_anchor() -> TestResult {
+        let token = self_anchored_token_fixture()?;
+        let path = embedded_timestamp_path(&token)?;
         check(
             &path,
             &vec![token.signer_certificate],
-            "exact listed identity terminates the authenticated path",
+            "the embedded self-issued certificate terminates the path",
         )
     }
 
     #[test]
-    fn qualified_level_t_rejects_revoked_or_missing_current_status() -> TestResult {
-        let (token, directory) = exact_trusted_identity_fixture()?;
-        for failure in [
-            "certificate revoked at current validation time",
-            "no authenticated current revocation status",
-        ] {
-            let error = authenticate_qualified_timestamp_with(
-                &token,
-                &directory,
-                false,
-                |_token, _list, _path| Err(failure.to_owned()),
-            )
-            .err()
-            .ok_or("qualified level T unexpectedly skipped current-status validation")?;
-            check(&error, &failure.to_owned(), "qualified T status failure")?;
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn archive_rejects_qualified_token_without_current_complete_evidence() -> TestResult {
-        let (token, directory) = exact_trusted_identity_fixture()?;
+    fn archive_rejects_a_token_without_current_complete_evidence() -> TestResult {
+        let token = self_anchored_token_fixture()?;
         let covered_material = ValidationMaterial {
             certificates: vec![token.signer_certificate.clone()],
             ..ValidationMaterial::default()
         };
-        let error = authenticate_archive_timestamp_with(
-            &token,
-            &directory,
-            &covered_material,
-            |_token, _list, _path| Err("current validation evidence unavailable".to_owned()),
-        )
+        let error = authenticate_archive_timestamp_with(&token, &covered_material, |_token| {
+            Err("current validation evidence unavailable".to_owned())
+        })
         .err()
         .ok_or("archive token unexpectedly survived missing validation evidence")?;
         check(
@@ -2428,36 +2300,6 @@ mod tests {
         check_true(
             error.contains("not byte-for-byte covered"),
             "rotated path is rejected",
-        )
-    }
-
-    #[test]
-    fn qualification_rejects_a_grant_that_started_after_the_token() -> TestResult {
-        let signer_der = crate::trust_roots::PINNED_ROOT_DER
-            .first()
-            .map(|(_label, der)| *der)
-            .ok_or("missing test trust anchor")?;
-        let signer = OwnedCert::from_der(signer_der)?;
-        let token = VerifiedTimestampToken {
-            token: vec![1],
-            signer_certificate: signer_der.to_vec(),
-            embedded_certificates: vec![signer_der.to_vec()],
-            generated_at: signer.view().not_before,
-        };
-        let directory = TrustedTimestampIdentities {
-            identities: vec![TrustedTimestampIdentity {
-                certificate_der: signer_der.to_vec(),
-                granted_from: signer.view().not_after,
-            }],
-            is_complete: true,
-            valid_until: signer.view().not_after,
-        };
-        let error = qualified_timestamp_path(&token, &directory)
-            .err()
-            .ok_or("future trusted-list grant unexpectedly qualified old token")?;
-        check_true(
-            error.contains("no grant effective"),
-            "grant start is enforced",
         )
     }
 
@@ -2538,19 +2380,18 @@ mod tests {
             token.embedded_certificates.len() >= 2,
             "timestamp signer chain retained",
         )?;
-        let directory = crate::trusted_list::qualified_timestamp_identities()?;
-        let path = qualified_timestamp_path(&token, &directory)?;
-        let material = timestamp_validation_material(&token, &directory, &path)?;
+        let path = embedded_timestamp_path(&token)?;
+        check_true(!path.is_empty(), "timestamp path verified")?;
+        let material = timestamp_validation_material(&token)?;
         check_true(
             !material.certificates.is_empty(),
-            "qualified timestamp path and LT evidence authenticated",
+            "timestamp path and LT evidence collected",
         )
     }
 
     #[test]
-    #[ignore = "needs live EU trusted lists, timestamp authorities, and revocation services"]
+    #[ignore = "needs live timestamp authorities and revocation services"]
     fn live_qualified_timestamp_and_lt_evidence_probe() -> TestResult {
-        let directory = crate::trusted_list::qualified_timestamp_identities()?;
         let digest = [0_u8; 32];
         let mut successes = 0_usize;
         let mut failures = Vec::new();
@@ -2565,14 +2406,11 @@ mod tests {
                     continue;
                 }
             };
-            let path = match qualified_timestamp_path(&token, &directory) {
-                Ok(path) => path,
-                Err(error) => {
-                    failures.push(format!("{url}: qualification: {error}"));
-                    continue;
-                }
-            };
-            match timestamp_validation_material(&token, &directory, &path) {
+            if let Err(error) = embedded_timestamp_path(&token) {
+                failures.push(format!("{url}: path: {error}"));
+                continue;
+            }
+            match timestamp_validation_material(&token) {
                 Ok(material) if !material.certificates.is_empty() => {
                     successes = successes.saturating_add(1);
                 }
@@ -2585,7 +2423,7 @@ mod tests {
         }
         check_true(
             successes > 0,
-            "at least one configured authority produced a qualified token with complete LT evidence",
+            "at least one configured authority produced a token with complete LT evidence",
         )
     }
 

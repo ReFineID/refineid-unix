@@ -4558,12 +4558,10 @@ dependencies = [
  "refineid-lib-core",
  "refineid-lib-pcsc",
  "refineid-lib-tls",
- "roxmltree",
  "rpassword",
  "sha1",
  "sha2",
  "tokio",
- "xml-sec",
  "zeroize",
 ]
 
@@ -7004,18 +7002,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "xml-sec"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "250299b7eb211ded99b0d3ec007cd168e54b1c0ad8c1a4aa2bc2b2156d014ac6"
-dependencies = [
- "base64",
- "quick-xml",
- "roxmltree",
- "thiserror 2.0.19",
-]
 
 [[package]]
 name = "xmlwriter"
