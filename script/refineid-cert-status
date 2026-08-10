@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+#
+# refineid-cert-status — show the current FINEID card's
+# authentication-certificate revocation status by querying the
+# DVV OCSP responder embedded in the cert itself.
+#
+# Output (stdout): a structured summary including:
+#   * Cert subject + serial + validity dates
+#   * Live OCSP status from http://ocsp.fineid.fi/<ca>
+#   * Revocation date + reason if the cert is revoked
+#
+# The OCSP responder + CA Issuers + CRL distribution URLs come
+# straight from the cert's X.509v3 extensions; no hardcoded DVV
+# endpoints, so a future FINEID profile change won't silently
+# break this script.
+#
+# Usage:
+#   ./refineid-cert-status [--lang en|fi|sv]
+#
+# Optional env:
+#   REFINEID_REFINEID  — path to the `refineid` binary used to
+#                         read the card's cert. Default: search
+#                         PATH, then ../target/{debug,release}.
+#
+# Exit codes:
+#   0  cert is good
+#   1  arg / setup / dependency failure
+#   2  cert is revoked (revocation date printed on stdout)
+#   3  OCSP query failed AND CRL fallback also failed
+#   4  cert read from card failed
+
+set -uo pipefail
+
+LANG_TAG="en"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --lang) shift; LANG_TAG="${1:-en}" ;;
+        -h|--help)
+            sed -n '3,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *) echo "error: unknown arg $1" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+# --- Locate refineid CLI ---------------------------------------------
+REFINEID="${REFINEID_REFINEID:-}"
+if [[ -z "$REFINEID" ]]; then
+    if command -v refineid >/dev/null 2>&1; then
+        REFINEID=$(command -v refineid)
+    else
+        HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+        DEBUG_BIN="$HERE/../target/debug/refineid"
+        RELEASE_BIN="$HERE/../target/release/refineid"
+        if [[ -x "$DEBUG_BIN" && -x "$RELEASE_BIN" ]]; then
+            if [[ "$DEBUG_BIN" -nt "$RELEASE_BIN" ]]; then
+                REFINEID="$DEBUG_BIN"
+            else
+                REFINEID="$RELEASE_BIN"
+            fi
+        elif [[ -x "$DEBUG_BIN" ]]; then
+            REFINEID="$DEBUG_BIN"
+        elif [[ -x "$RELEASE_BIN" ]]; then
+            REFINEID="$RELEASE_BIN"
+        fi
+    fi
+fi
+if [[ -z "$REFINEID" || ! -x "$REFINEID" ]]; then
+    echo "error: refineid binary not found (build with 'cargo build -p refineid-client')" >&2
+    exit 1
+fi
+
+command -v openssl >/dev/null || { echo "error: openssl not on PATH" >&2; exit 1; }
+command -v curl    >/dev/null || { echo "error: curl not on PATH"    >&2; exit 1; }
+
+# --- Read auth cert from card ----------------------------------------
+TMP=$(mktemp -d -t refineid-cert-status)
+trap 'rm -rf "$TMP"' EXIT
+CERT="$TMP/auth.pem"
+
+if ! "$REFINEID" cert --pem 2>"$TMP/cert.err" | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' >"$CERT"; then
+    echo "error: could not read auth cert from card" >&2
+    cat "$TMP/cert.err" >&2
+    exit 4
+fi
+if [[ ! -s "$CERT" ]]; then
+    echo "error: no PEM block in 'refineid cert --pem' output" >&2
+    cat "$TMP/cert.err" >&2
+    exit 4
+fi
+
+# --- Cert metadata ---------------------------------------------------
+SUBJECT=$(openssl x509 -in "$CERT" -noout -subject -nameopt RFC2253 2>/dev/null | sed 's/^subject=//')
+SERIAL=$(openssl x509 -in "$CERT" -noout -serial 2>/dev/null | sed 's/^serial=//')
+NOT_BEFORE=$(openssl x509 -in "$CERT" -noout -startdate 2>/dev/null | sed 's/^notBefore=//')
+NOT_AFTER=$(openssl x509 -in "$CERT" -noout -enddate   2>/dev/null | sed 's/^notAfter=//')
+OCSP_URL=$(openssl x509 -in "$CERT" -noout -ocsp_uri  2>/dev/null | head -1)
+CA_URL=$(openssl x509 -in "$CERT" -noout -text 2>/dev/null \
+           | grep -A1 "CA Issuers" | sed -n 's/.*URI:\(.*\)/\1/p' | head -1)
+CRL_URL=$(openssl x509 -in "$CERT" -noout -text 2>/dev/null \
+           | grep -A4 "CRL Distribution" | sed -n 's/.*URI:\(.*\)/\1/p' | head -1)
+
+echo "Subject:        $SUBJECT"
+echo "Serial:         $SERIAL"
+echo "Valid:          $NOT_BEFORE .. $NOT_AFTER"
+echo "OCSP responder: ${OCSP_URL:-<none>}"
+echo "CA Issuers:     ${CA_URL:-<none>}"
+echo "CRL:            ${CRL_URL:-<none>}"
+echo
+
+# --- OCSP query (preferred) ------------------------------------------
+ocsp_status_result=""
+if [[ -n "$OCSP_URL" && -n "$CA_URL" ]]; then
+    echo "==> OCSP query: $OCSP_URL"
+    if curl -sL -o "$TMP/issuer.raw" --connect-timeout 10 "$CA_URL"; then
+        # Try DER first, then PEM. `file(1)` reports DVV's certs as
+        # "Certificate, Version=3" which doesn't match a simple
+        # regex, so we just try both formats and use whichever
+        # openssl accepts.
+        if openssl x509 -inform DER -in "$TMP/issuer.raw" -out "$TMP/issuer.pem" 2>/dev/null \
+           || openssl x509 -inform PEM -in "$TMP/issuer.raw" -out "$TMP/issuer.pem" 2>/dev/null; then
+            :
+            # Run OCSP. -no_nonce because some responders refuse
+            # nonced requests; -noverify because we don't have the
+            # responder-signing cert in our trust store and the
+            # structured fields are what we want, not a green check.
+            openssl ocsp \
+                -issuer "$TMP/issuer.pem" \
+                -cert   "$CERT" \
+                -url    "$OCSP_URL" \
+                -no_nonce \
+                -noverify \
+                -resp_text >"$TMP/ocsp.out" 2>"$TMP/ocsp.err" || true
+            STATUS=$(grep -m1 "Cert Status:" "$TMP/ocsp.out" | sed 's/.*Cert Status: //')
+            REVTIME=$(grep -m1 "Revocation Time:" "$TMP/ocsp.out" | sed 's/.*Revocation Time: //')
+            REVREASON=$(grep -m1 "Revocation Reason:" "$TMP/ocsp.out" | sed 's/.*Revocation Reason: //')
+            UPDATED=$(grep -m1 "This Update:" "$TMP/ocsp.out" | sed 's/.*This Update: //')
+            case "$STATUS" in
+                good)
+                    echo "    Status:        GOOD (as of $UPDATED)"
+                    ocsp_status_result="good"
+                    ;;
+                revoked)
+                    echo "    Status:        REVOKED"
+                    echo "    Revoked at:    $REVTIME"
+                    echo "    Reason:        $REVREASON"
+                    echo "    Last updated:  $UPDATED"
+                    ocsp_status_result="revoked"
+                    ;;
+                unknown)
+                    echo "    Status:        UNKNOWN (responder doesn't know this cert)"
+                    ocsp_status_result="unknown"
+                    ;;
+                *)
+                    echo "    OCSP responder returned an unparseable status."
+                    sed -n '/OCSP Response/,/Signature/p' "$TMP/ocsp.out" | head -20 >&2
+                    ;;
+            esac
+        else
+            echo "    fetched $CA_URL but openssl couldn't parse it as DER or PEM; skipping OCSP."
+        fi
+    else
+        echo "    could not reach $CA_URL — falling through to CRL."
+    fi
+else
+    echo "==> OCSP URL or CA Issuers URL missing; skipping OCSP."
+fi
+
+# --- CRL fallback ----------------------------------------------------
+if [[ -z "$ocsp_status_result" && -n "$CRL_URL" ]]; then
+    echo
+    echo "==> CRL fallback: $CRL_URL"
+    if curl -sL -o "$TMP/crl.raw" --connect-timeout 10 "$CRL_URL"; then
+        # Same DER-or-PEM probe as the issuer cert.
+        if openssl crl -inform DER -in "$TMP/crl.raw" -out "$TMP/crl.pem" 2>/dev/null \
+           || openssl crl -inform PEM -in "$TMP/crl.raw" -out "$TMP/crl.pem" 2>/dev/null; then
+            :
+            # Strip the 0x prefix for comparison and uppercase for
+            # consistency with openssl crl -text output.
+            SERIAL_HEX=${SERIAL#0x}
+            SERIAL_HEX=$(echo "$SERIAL_HEX" | tr '[:lower:]' '[:upper:]' | sed 's/^0*//')
+            # CRL entries look like:
+            #   Serial Number: 3C40E423
+            #       Revocation Date: May 21 05:42:53 2026 GMT
+            #       ...
+            CRL_HIT=$(openssl crl -in "$TMP/crl.pem" -noout -text 2>/dev/null \
+                       | awk -v want="$SERIAL_HEX" '
+                           /Serial Number:/ { sn=$3; matched=(sn==want) }
+                           matched && /Revocation Date:/ {
+                               sub(/^[ \t]*Revocation Date: */, "")
+                               print "    Revoked at:    " $0
+                               matched=0
+                           }
+                       ')
+            if [[ -n "$CRL_HIT" ]]; then
+                echo "    Status:        REVOKED (via CRL)"
+                echo "$CRL_HIT"
+                ocsp_status_result="revoked"
+            else
+                echo "    Serial $SERIAL_HEX is NOT in the CRL — cert presumed good."
+                ocsp_status_result="good"
+            fi
+        else
+            echo "    fetched $CRL_URL but openssl couldn't parse it as a CRL."
+        fi
+    else
+        echo "    could not reach $CRL_URL."
+    fi
+fi
+
+# --- Final exit ------------------------------------------------------
+case "$ocsp_status_result" in
+    good)    exit 0 ;;
+    revoked) exit 2 ;;
+    *)       exit 3 ;;
+esac
