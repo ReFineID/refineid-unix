@@ -8,6 +8,9 @@
 - Verify from specifications, don't wild guess.
   `doc/references.md` indexes which one governs what.
   Cite what a source proves, and say what it does not.
+- Never put a git worktree under `/tmp`. It is cleared on reboot and
+  takes the branch's only checkout with it. Keep worktrees beside the
+  repository.
 - Less is more. Terse is better.
 - Do not leak personal or private information in commits.
 - When stuck, research with fellow AI available.
