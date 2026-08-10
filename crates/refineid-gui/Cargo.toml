@@ -12,6 +12,11 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Forwarded to the client: the CAN-gated visible PDF stamp. OFF by
+# default; see refineid-client's feature of the same name.
+pdf-stamp = ["refineid-client/pdf-stamp"]
+
 [dependencies]
 refineid-client = { path = "../refineid-client", version = "26" }
 refineid-lib-core.workspace = true

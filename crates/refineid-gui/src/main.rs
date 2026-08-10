@@ -756,7 +756,10 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
         .map_err(|error| error.to_string())?;
         return Ok(format!("Signed container saved to {}.", output.display()));
     }
+    // Without the stamp feature no mark is requested, so the card is
+    // not read for ink it would never draw.
     let handwriting = match (handwriting, can) {
+        _ if !cfg!(feature = "pdf-stamp") => None,
         (Some(ink), _) => Some(ink),
         (None, Some(can)) => {
             let images = refineid_client::card_manager::read_images(can, Some(reader.clone()))

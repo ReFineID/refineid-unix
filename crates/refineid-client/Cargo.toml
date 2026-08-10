@@ -29,7 +29,7 @@ default = ["tls-rustls"]
 # that no backend was compiled.
 https = ["dep:refineid-lib-tls"]
 # rustls backend for the public-infrastructure fetches: timestamp
-# authorities, EU trusted lists, validator APIs.
+# authorities and validator APIs.
 tls-rustls = ["https", "refineid-lib-tls/tls-rustls"]
 # Debug aid: read PINs from REFINEID_PIN1 / _PIN2 / _CURRENT_* /
 # _NEW_* environment variables instead of prompting. OFF by default
@@ -40,6 +40,13 @@ tls-rustls = ["https", "refineid-lib-tls/tls-rustls"]
 # The gate is compile-time, so a default build has no code path
 # that touches the variables at all.
 pin-env-debug = []
+# The visible PDF stamp: the CAN-gated mark carrying the holder's
+# name, SATU and card ink, drawn into the signed revision. OFF by
+# default -- an unstamped signature is invisible and alters no page.
+# The code stays compiled either way; the gate decides only whether a
+# mark is ever requested:
+#   cargo build --features pdf-stamp
+pdf-stamp = []
 
 [dependencies]
 refineid-lib-core.workspace = true

@@ -185,12 +185,18 @@ pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
             ),
         });
     }
-    // The card access number is the stamp request: entering one is how
-    // the holder asks for a visible mark, and it is also what reads the
-    // card's ink. Without one the signature stays invisible, as it does
-    // in every other client -- a mark with nothing behind it is not a
-    // smaller stamp, it is a wrong one.
-    let visible_signature = can.is_some().then_some(VisibleSignatureRequest { handwriting });
+    // The stamp is a build-time feature, off by default: less is more,
+    // and an unstamped signature is invisible and alters no page. With
+    // the feature on, the card access number is the stamp request:
+    // entering one is how the holder asks for a visible mark, and it
+    // is also what reads the card's ink. Without one the signature
+    // stays invisible, as it does in every other client -- a mark with
+    // nothing behind it is not a smaller stamp, it is a wrong one.
+    let visible_signature = if cfg!(feature = "pdf-stamp") {
+        can.is_some().then_some(VisibleSignatureRequest { handwriting })
+    } else {
+        None
+    };
     let document = pdf_document_request(
         expected_serial,
         visible_signature,
