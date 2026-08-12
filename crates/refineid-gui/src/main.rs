@@ -973,10 +973,12 @@ fn signs_in_place(documents: &[PathBuf]) -> bool {
 
 /// Asks for the one file a signature is written to.
 ///
-/// A container covering a set is offered the signing instant and no
-/// name: no one document in a set is the set, and naming it after
-/// whichever was chosen first would be a guess wearing the look of a
-/// fact. One document is offered its own name, which is not a guess.
+/// A container covering a set is offered no name at all: no one
+/// document in a set is the set, and naming it after whichever was
+/// chosen first would be a guess wearing the look of a fact. The
+/// field is left empty for the holder to write, and the signing
+/// instant is appended to what they wrote. One document is offered
+/// its own name, which is not a guess.
 fn choose_signed_file(
     documents: &[PathBuf],
     format: Format,
@@ -987,8 +989,9 @@ fn choose_signed_file(
         Format::AsicEXades => ("ASiC-E container", "asice"),
         _ => ("PDF document", "pdf"),
     };
-    let default_name = if documents.len() > 1 {
-        signed_container_file_name(signed_at, extension)
+    let together = documents.len() > 1;
+    let default_name = if together {
+        String::new()
     } else {
         signed_document_file_name(first, signed_at, extension)
     };
@@ -999,7 +1002,9 @@ fn choose_signed_file(
         dialog = dialog.set_directory(parent);
     }
     let mut output = dialog.save_file()?;
-    if output.extension().is_none() {
+    if together {
+        output = stamped_container_path(&output, signed_at);
+    } else if output.extension().is_none() {
         output.set_extension(extension);
     }
     Some(SignedOutputTarget::File(output))
@@ -1015,18 +1020,24 @@ fn choose_signed_folder(first: &std::path::Path) -> Option<SignedOutputTarget> {
     dialog.pick_folder().map(SignedOutputTarget::Directory)
 }
 
-/// The name a container covering several documents is offered under:
-/// the signing instant, and no document's name before it.
+/// The name the holder wrote for a container, stamped with the
+/// signing instant.
 ///
-/// The instant is kept because it is the one part that is not a guess,
-/// and because it is what stops a second signature from overwriting
-/// the first. The name itself is left for the holder to write.
-fn signed_container_file_name(
+/// The stamp is appended after the dialog rather than offered in its
+/// field: a save dialog selects everything in the field, so a stamp
+/// placed there is wiped by the first keystroke. Appended, it
+/// survives without having to be defended, and it is what stops a
+/// second signature from overwriting the first.
+fn stamped_container_path(
+    chosen: &std::path::Path,
     signed_at: &refineid_lib_core::x509::DateTime,
-    extension: &str,
-) -> String {
+) -> PathBuf {
+    let stem = chosen
+        .file_stem()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
     let instant = signed_at.to_string().replace(':', "-");
-    format!(" - signed at {instant}.{extension}")
+    chosen.with_file_name(format!("{stem} - signed at {instant}.asice"))
 }
 
 /// Whether a chosen file can hold a `PAdES` signature at all.
@@ -2154,7 +2165,7 @@ mod tests {
         CARD_PRESENCE_WAIT, PathBuf, chosen_document_names, condense_reader_name,
         legacy_activation_required, normalized_puk_input, optional_can, pin_change_available,
         puk_status, recovery_availability, refine_recovery_submission, secret,
-        signed_container_file_name, signed_document_file_name, signed_pdf_report, signs_in_place,
+        signed_document_file_name, signed_pdf_report, signs_in_place, stamped_container_path,
         timestamp_authority_url, timestamp_credentials, validate_gui_pin, validate_gui_pin_format,
         validate_gui_puk, validate_replacement_pin,
     };
@@ -2247,19 +2258,25 @@ mod tests {
         assert!(!signs_in_place(&[]));
     }
 
-    /// A container covering a set is offered no document's name.
+    /// The signing instant is appended to the name the holder wrote
+    /// for a container, whatever they wrote.
     ///
-    /// Whichever document was chosen first is not the set, and a name
-    /// taken from it would read as a fact rather than the guess it is.
-    /// The signing instant survives, because it is not a guess and it
-    /// is what stops a second signature overwriting the first.
+    /// The stamp is added after the save dialog rather than offered in
+    /// its field: the dialog selects everything in the field, so a
+    /// stamp placed there is wiped by the first keystroke.
     #[test]
-    fn a_container_of_several_is_offered_no_document_name() {
+    fn a_containers_written_name_gets_the_instant_appended() {
         let instant =
             refineid_lib_core::x509::DateTime::new(2026, 8, 12, 14, 30, 12).expect("valid instant");
+        // The dialog may hand the name back with or without the
+        // extension its filter appends.
         assert_eq!(
-            signed_container_file_name(&instant, "asice"),
-            " - signed at 2026-08-12T14-30-12Z.asice"
+            stamped_container_path(std::path::Path::new("/documents/kasa.asice"), &instant),
+            PathBuf::from("/documents/kasa - signed at 2026-08-12T14-30-12Z.asice")
+        );
+        assert_eq!(
+            stamped_container_path(std::path::Path::new("/documents/kasa"), &instant),
+            PathBuf::from("/documents/kasa - signed at 2026-08-12T14-30-12Z.asice")
         );
         // One document keeps its own name, which is not a guess.
         assert_eq!(
