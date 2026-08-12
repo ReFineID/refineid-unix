@@ -733,19 +733,10 @@ export component RefineIdWindow inherits Window {
                         enabled: !root.busy;
                         clicked => { root.clear-pdf-documents(); }
                     }
-                    // What the set becomes, said only when it is more
-                    // than one file: a single row already says
-                    // everything about itself. Read from the rows and
-                    // the chosen shape so it follows the ComboBox,
-                    // which changes without Rust being asked.
+                    // Nothing is said about a chosen set: the rows are
+                    // the count and the format control is the shape.
                     Text {
-                        text: root.pdf-documents.length == 0
-                            ? "No documents selected"
-                            : root.pdf-documents.length == 1
-                                ? ""
-                                : root.sign-format == 0
-                                    ? "\{root.pdf-documents.length} documents, each signed separately"
-                                    : "\{root.pdf-documents.length} documents in one container";
+                        text: root.pdf-documents.length == 0 ? "No documents selected" : "";
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
