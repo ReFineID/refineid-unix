@@ -156,12 +156,26 @@ struct ManagedCard {
 type CardInspectionResult = Result<Vec<ManagedCard>, String>;
 type PdfSignResult = Result<String, String>;
 
+/// Where a signing job writes what it produces.
+///
+/// The two shapes produce different numbers of files, so they are
+/// asked for differently and cannot be confused: a container is one
+/// file however many documents it covers, and `PAdES` is one signed
+/// PDF per document, which needs somewhere to put them.
+#[derive(Debug)]
+enum SignedOutputTarget {
+    /// One file: a container, or a single PDF signed in place.
+    File(PathBuf),
+    /// A folder taking one signed PDF per document.
+    Directory(PathBuf),
+}
+
 struct PdfSigningJob {
     input: PathBuf,
-    /// Further documents carried in the same container. Always empty
-    /// for `PAdES`, which signs the one PDF it is given.
+    /// Further documents: carried in the same container, or each
+    /// signed in place beside the first.
     additional_inputs: Vec<PathBuf>,
-    output: PathBuf,
+    output: SignedOutputTarget,
     pin2: PinBytes,
     can: Option<refineid_lib_core::can::Can>,
     reader: String,
@@ -747,6 +761,9 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
     // revision to draw a visible mark into - the card images are not
     // read at all.
     if format == Format::AsicEXades {
+        let SignedOutputTarget::File(output) = output else {
+            return Err("A container is one file, not a folder.".to_owned());
+        };
         // What the container covers, said only when it is more than the
         // one document whose name the window shows.
         let carried = match additional_inputs.len() {
@@ -771,7 +788,9 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
         ));
     }
     // Without the stamp feature no mark is requested, so the card is
-    // not read for ink it would never draw.
+    // not read for ink it would never draw. Read once and reused for
+    // every PDF of a set: it is one card and one mark, and reading it
+    // per document would ask the same question over and over.
     let handwriting = match (handwriting, can) {
         _ if !cfg!(feature = "pdf-stamp") => None,
         (Some(ink), _) => Some(ink),
@@ -788,19 +807,64 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
         }
         (None, None) => None,
     };
-    refineid_client::card_manager::sign_pdf(refineid_client::card_manager::PdfSignOptions {
-        input,
-        output: output.clone(),
-        pin2,
-        can,
-        reader_filter: Some(reader),
-        expected_serial,
-        handwriting,
-        timestamp_authority,
-        timestamp_credentials,
-    })
-    .map_err(|error| error.to_string())?;
-    Ok(format!("Signed PDF saved to {}.", output.display()))
+    let signed_at = refineid_client::card_check::now_date_time();
+    let inputs = core::iter::once(input).chain(additional_inputs);
+    let mut written: Vec<PathBuf> = Vec::new();
+    let mut refusals: Vec<String> = Vec::new();
+    for source in inputs {
+        // One instant names every output of one action, so a set signed
+        // together sorts together in the directory listing.
+        let destination = match &output {
+            SignedOutputTarget::File(path) => path.clone(),
+            SignedOutputTarget::Directory(folder) => {
+                folder.join(signed_document_file_name(&source, &signed_at, "pdf"))
+            }
+        };
+        // One document failing does not stop the rest, and each leaves
+        // a sentence behind: a batch that reported only that it
+        // finished would hide which documents were signed.
+        match refineid_client::card_manager::sign_pdf(
+            refineid_client::card_manager::PdfSignOptions {
+                input: source.clone(),
+                output: destination.clone(),
+                pin2: pin2.clone(),
+                can,
+                reader_filter: Some(reader.clone()),
+                expected_serial: expected_serial.clone(),
+                handwriting: handwriting.clone(),
+                timestamp_authority: timestamp_authority.clone(),
+                timestamp_credentials: timestamp_credentials.clone(),
+            },
+        ) {
+            Ok(_) => written.push(destination),
+            Err(error) => refusals.push(format!(
+                "{}: {error}",
+                source
+                    .file_name()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .unwrap_or("Document")
+            )),
+        }
+    }
+    signed_pdf_report(&written, &refusals)
+}
+
+/// What a run of `PAdES` signatures produced, as one sentence.
+///
+/// A refusal is named with the document it concerns. A run where every
+/// document was refused is a failure and not a report of nothing.
+fn signed_pdf_report(written: &[PathBuf], refusals: &[String]) -> PdfSignResult {
+    let refused = refusals.join("; ");
+    match (written, refusals.is_empty()) {
+        ([], _) => Err(refused),
+        ([only], true) => Ok(format!("Signed PDF saved to {}.", only.display())),
+        (many, true) => Ok(format!("Signed {} PDFs, each in its own file.", many.len())),
+        (many, false) => Ok(format!(
+            "Signed {} of {} PDFs. Not signed -- {refused}",
+            many.len(),
+            many.len() + refusals.len()
+        )),
+    }
 }
 
 #[expect(
@@ -857,17 +921,10 @@ fn signed_document_file_name(
     format!("{stem} - signed at {instant}.{extension}")
 }
 
-/// What a set of chosen documents becomes, said only when it is more
-/// than one file: a single row already says everything about itself.
-///
-/// A container carries the set under one signature; `PAdES` signs the
-/// one PDF it is given, so a set never takes that shape.
-fn chosen_documents_summary(paths: &[PathBuf]) -> String {
-    match paths.len() {
-        0 | 1 => String::new(),
-        count => format!("{count} documents in one container"),
-    }
-}
+// What a set of chosen documents becomes is said in the window itself,
+// from the row count and the chosen shape: both change without Rust
+// being asked, and a sentence computed here would describe the shape
+// that was chosen before the last one.
 
 /// The file names shown for the documents waiting to be signed.
 ///
@@ -892,18 +949,84 @@ fn chosen_document_names(paths: &[PathBuf]) -> Vec<slint::SharedString> {
 /// One place decides all three, because they are one fact: a set that
 /// lost a row and kept its count, or kept `PAdES` offered after a
 /// spreadsheet joined it, would be describing documents that are no
-/// longer there. One PDF alone can carry its own signature and
-/// defaults to that; anything else - another file type, or a set of
-/// them - signs into one `ASiC-E` container covered by one signature,
-/// with the choice shown locked rather than hidden.
+/// longer there.
+///
+/// A PDF carries its own signature, and several PDFs are signed and
+/// stored one by one, so an all-`PDF` set keeps that shape and
+/// defaults to it. One file of any other type takes the choice away:
+/// nothing but a `PDF` has an inside to sign, so the set can only
+/// travel in one container, and the choice is shown locked rather
+/// than hidden.
 fn show_chosen_documents(window: &RefineIdWindow, documents: &[PathBuf]) {
     window.set_pdf_documents(slint::ModelRc::new(slint::VecModel::from(
         chosen_document_names(documents),
     )));
-    window.set_pdf_document_summary(chosen_documents_summary(documents).into());
-    let signs_in_place = matches!(documents, [only] if is_pdf(only));
+    let signs_in_place = signs_in_place(documents);
     window.set_sign_format_locked(!signs_in_place);
     window.set_sign_format(i32::from(!signs_in_place));
+}
+
+/// Whether every chosen document can hold its own signature.
+fn signs_in_place(documents: &[PathBuf]) -> bool {
+    !documents.is_empty() && documents.iter().all(|document| is_pdf(document))
+}
+
+/// Asks for the one file a signature is written to.
+///
+/// A container covering a set is offered the signing instant and no
+/// name: no one document in a set is the set, and naming it after
+/// whichever was chosen first would be a guess wearing the look of a
+/// fact. One document is offered its own name, which is not a guess.
+fn choose_signed_file(
+    documents: &[PathBuf],
+    format: Format,
+    signed_at: &refineid_lib_core::x509::DateTime,
+) -> Option<SignedOutputTarget> {
+    let first = documents.first()?;
+    let (filter_name, extension) = match format {
+        Format::AsicEXades => ("ASiC-E container", "asice"),
+        _ => ("PDF document", "pdf"),
+    };
+    let default_name = if documents.len() > 1 {
+        signed_container_file_name(signed_at, extension)
+    } else {
+        signed_document_file_name(first, signed_at, extension)
+    };
+    let mut dialog = rfd::FileDialog::new()
+        .add_filter(filter_name, &[extension])
+        .set_file_name(&default_name);
+    if let Some(parent) = first.parent() {
+        dialog = dialog.set_directory(parent);
+    }
+    let mut output = dialog.save_file()?;
+    if output.extension().is_none() {
+        output.set_extension(extension);
+    }
+    Some(SignedOutputTarget::File(output))
+}
+
+/// Asks for the folder a set of signed PDFs is written to, starting
+/// beside the first document.
+fn choose_signed_folder(first: &std::path::Path) -> Option<SignedOutputTarget> {
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(parent) = first.parent() {
+        dialog = dialog.set_directory(parent);
+    }
+    dialog.pick_folder().map(SignedOutputTarget::Directory)
+}
+
+/// The name a container covering several documents is offered under:
+/// the signing instant, and no document's name before it.
+///
+/// The instant is kept because it is the one part that is not a guess,
+/// and because it is what stops a second signature from overwriting
+/// the first. The name itself is left for the holder to write.
+fn signed_container_file_name(
+    signed_at: &refineid_lib_core::x509::DateTime,
+    extension: &str,
+) -> String {
+    let instant = signed_at.to_string().replace(':', "-");
+    format!(" - signed at {instant}.{extension}")
 }
 
 /// Whether a chosen file can hold a `PAdES` signature at all.
@@ -1392,39 +1515,31 @@ fn main() -> Result<(), slint::PlatformError> {
             } else {
                 Format::Pades
             };
-            // A PDF carries its own signature and cannot carry another
-            // document's, so a set has only the container shape. The
-            // chooser already locks this; refused here too, because a
-            // format that signed one file of a chosen set would leave
-            // the rest unsigned without saying so.
-            if format == Format::Pades && !additional_inputs.is_empty() {
+            // Nothing but a PDF has an inside to sign, so a set that is
+            // not all PDFs cannot take this shape. The chooser already
+            // locks it; refused here too, because a format that signed
+            // one file of a chosen set would leave the rest unsigned
+            // without saying so.
+            if format == Format::Pades && !signs_in_place(&chosen) {
                 window.set_pdf_sign_result(
-                    "Several documents can only be signed into one ASiC-E container.".into(),
+                    "Only PDFs can be signed in place; this set needs one ASiC-E container.".into(),
                 );
                 return;
             }
-            let (filter_name, extension) = match format {
-                Format::AsicEXades => ("ASiC-E container", "asice"),
-                _ => ("PDF document", "pdf"),
-            };
-            let default_name = signed_document_file_name(
-                &input,
-                &refineid_client::card_check::now_date_time(),
-                extension,
-            );
-            let mut dialog = rfd::FileDialog::new()
-                .add_filter(filter_name, &[extension])
-                .set_file_name(&default_name);
-            if let Some(parent) = input.parent() {
-                dialog = dialog.set_directory(parent);
-            }
-            let Some(mut output) = dialog.save_file() else {
+            let signed_at = refineid_client::card_check::now_date_time();
+            // Several PDFs are signed and stored one by one, so they
+            // ask for a folder. Everything else is one file: a
+            // container, or a single PDF signed in place.
+            let Some(output) = (if format == Format::Pades && !additional_inputs.is_empty() {
+                choose_signed_folder(&input)
+            } else {
+                choose_signed_file(&chosen, format, &signed_at)
+            }) else {
                 return;
             };
-            if output.extension().is_none() {
-                output.set_extension(extension);
-            }
-            if output == input || additional_inputs.contains(&output) {
+            if let SignedOutputTarget::File(path) = &output
+                && chosen.contains(path)
+            {
                 window.set_pdf_sign_result(
                     "Choose a destination different from the original documents.".into(),
                 );
@@ -2036,11 +2151,12 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CARD_PRESENCE_WAIT, PathBuf, chosen_document_names, chosen_documents_summary,
-        condense_reader_name, legacy_activation_required, normalized_puk_input, optional_can,
-        pin_change_available, puk_status, recovery_availability, refine_recovery_submission,
-        secret, signed_document_file_name, timestamp_authority_url, timestamp_credentials,
-        validate_gui_pin, validate_gui_pin_format, validate_gui_puk, validate_replacement_pin,
+        CARD_PRESENCE_WAIT, PathBuf, chosen_document_names, condense_reader_name,
+        legacy_activation_required, normalized_puk_input, optional_can, pin_change_available,
+        puk_status, recovery_availability, refine_recovery_submission, secret,
+        signed_container_file_name, signed_document_file_name, signed_pdf_report, signs_in_place,
+        timestamp_authority_url, timestamp_credentials, validate_gui_pin, validate_gui_pin_format,
+        validate_gui_puk, validate_replacement_pin,
     };
     use refineid_lib_core::apdu::status_word::PinRetries;
     use refineid_lib_core::auth::{PinStatus, PukStatus};
@@ -2109,23 +2225,81 @@ mod tests {
         assert!(chosen_document_names(&[]).is_empty());
     }
 
-    /// A single row says everything about itself; a set says what it
-    /// becomes, so a container covering several is not read as
-    /// covering the one whose name happens to be first.
+    /// Several PDFs keep the shape that signs each one in place.
+    ///
+    /// PDFs are signed one by one and stored one by one. A set of them
+    /// that could only take the container shape would have lost the
+    /// ordinary way of signing several PDFs at once.
     #[test]
-    fn only_a_set_says_what_it_becomes() {
-        let one = [PathBuf::from("/documents/Agreement.odt")];
-        assert_eq!(chosen_documents_summary(&one), "");
-        let several = [
-            PathBuf::from("/documents/Agreement.odt"),
-            PathBuf::from("/documents/Annex.xlsx"),
-            PathBuf::from("/photos/Site.jpg"),
+    fn several_pdfs_are_still_signed_one_by_one() {
+        let pdfs = [
+            PathBuf::from("/documents/One.pdf"),
+            PathBuf::from("/documents/Two.PDF"),
         ];
+        assert!(signs_in_place(&pdfs));
+        // One file of another type takes the choice away: nothing but
+        // a PDF has an inside to sign.
+        let mixed = [
+            PathBuf::from("/documents/One.pdf"),
+            PathBuf::from("/documents/Ledger.ods"),
+        ];
+        assert!(!signs_in_place(&mixed));
+        assert!(!signs_in_place(&[]));
+    }
+
+    /// A container covering a set is offered no document's name.
+    ///
+    /// Whichever document was chosen first is not the set, and a name
+    /// taken from it would read as a fact rather than the guess it is.
+    /// The signing instant survives, because it is not a guess and it
+    /// is what stops a second signature overwriting the first.
+    #[test]
+    fn a_container_of_several_is_offered_no_document_name() {
+        let instant =
+            refineid_lib_core::x509::DateTime::new(2026, 8, 12, 14, 30, 12).expect("valid instant");
         assert_eq!(
-            chosen_documents_summary(&several),
-            "3 documents in one container"
+            signed_container_file_name(&instant, "asice"),
+            " - signed at 2026-08-12T14-30-12Z.asice"
         );
-        assert_eq!(chosen_documents_summary(&[]), "");
+        // One document keeps its own name, which is not a guess.
+        assert_eq!(
+            signed_document_file_name(
+                std::path::Path::new("/documents/Agreement.odt"),
+                &instant,
+                "asice"
+            ),
+            "Agreement - signed at 2026-08-12T14-30-12Z.asice"
+        );
+    }
+
+    /// A run of `PAdES` signatures says how many were written, and names
+    /// every document that was refused.
+    ///
+    /// A run where one document failed still reports the rest: a batch
+    /// that said only that it finished would hide which files were
+    /// signed, and one that reported only the failure would hide that
+    /// a PIN had been spent on the others.
+    #[test]
+    fn a_batch_reports_what_was_signed_and_what_was_not() {
+        let one = [PathBuf::from("/out/One - signed.pdf")];
+        let two = [one[0].clone(), PathBuf::from("/out/Two - signed.pdf")];
+        assert_eq!(
+            signed_pdf_report(&one, &[]),
+            Ok("Signed PDF saved to /out/One - signed.pdf.".to_owned())
+        );
+        assert_eq!(
+            signed_pdf_report(&two, &[]),
+            Ok("Signed 2 PDFs, each in its own file.".to_owned())
+        );
+        assert_eq!(
+            signed_pdf_report(&one, &["Two.pdf: encrypted".to_owned()]),
+            Ok("Signed 1 of 2 PDFs. Not signed -- Two.pdf: encrypted".to_owned())
+        );
+        // Nothing written is a failure, not a report of nothing.
+        assert_eq!(
+            signed_pdf_report(&[], &["One.pdf: encrypted".to_owned()]),
+            Err("One.pdf: encrypted".to_owned())
+        );
     }
 
     #[test]

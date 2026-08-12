@@ -72,8 +72,6 @@ export component RefineIdWindow inherits Window {
     // rest, leaving a wrong file in the set impossible to see and
     // impossible to take out without starting the selection again.
     in-out property <[string]> pdf-documents: [];
-    // What the set becomes, said only when it is more than one file.
-    in-out property <string> pdf-document-summary: "";
     in-out property <string> pdf-pin2: "";
     in-out property <string> pdf-sign-result: "";
     in-out property <int> sign-operation: 0;
@@ -735,10 +733,19 @@ export component RefineIdWindow inherits Window {
                         enabled: !root.busy;
                         clicked => { root.clear-pdf-documents(); }
                     }
+                    // What the set becomes, said only when it is more
+                    // than one file: a single row already says
+                    // everything about itself. Read from the rows and
+                    // the chosen shape so it follows the ComboBox,
+                    // which changes without Rust being asked.
                     Text {
                         text: root.pdf-documents.length == 0
                             ? "No documents selected"
-                            : root.pdf-document-summary;
+                            : root.pdf-documents.length == 1
+                                ? ""
+                                : root.sign-format == 0
+                                    ? "\{root.pdf-documents.length} documents, each signed separately"
+                                    : "\{root.pdf-documents.length} documents in one container";
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
