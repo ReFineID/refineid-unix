@@ -158,6 +158,9 @@ type PdfSignResult = Result<String, String>;
 
 struct PdfSigningJob {
     input: PathBuf,
+    /// Further documents carried in the same container. Always empty
+    /// for `PAdES`, which signs the one PDF it is given.
+    additional_inputs: Vec<PathBuf>,
     output: PathBuf,
     pin2: PinBytes,
     can: Option<refineid_lib_core::can::Can>,
@@ -729,6 +732,7 @@ impl UiImage {
 fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
     let PdfSigningJob {
         input,
+        additional_inputs,
         output,
         pin2,
         can,
@@ -739,12 +743,19 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
         timestamp_credentials,
         format,
     } = job;
-    // The container carries the file unchanged, so there is no signed
+    // The container carries the files unchanged, so there is no signed
     // revision to draw a visible mark into - the card images are not
     // read at all.
     if format == Format::AsicEXades {
+        // What the container covers, said only when it is more than the
+        // one document whose name the window shows.
+        let carried = match additional_inputs.len() {
+            0 => String::new(),
+            rest => format!(" of {} documents", rest + 1),
+        };
         refineid_client::card_manager::sign_asice(refineid_client::card_manager::AsicSignOptions {
             input,
+            additional_inputs,
             output: output.clone(),
             pin2,
             can,
@@ -754,7 +765,10 @@ fn run_pdf_signing(job: PdfSigningJob) -> PdfSignResult {
             timestamp_credentials,
         })
         .map_err(|error| error.to_string())?;
-        return Ok(format!("Signed container saved to {}.", output.display()));
+        return Ok(format!(
+            "Signed container{carried} saved to {}.",
+            output.display()
+        ));
     }
     // Without the stamp feature no mark is requested, so the card is
     // not read for ink it would never draw.
@@ -841,6 +855,22 @@ fn signed_document_file_name(
         .unwrap_or("Document");
     let instant = signed_at.to_string().replace(':', "-");
     format!("{stem} - signed at {instant}.{extension}")
+}
+
+/// What the window shows for the documents waiting to be signed.
+///
+/// A set says how many, so a container covering several files is not
+/// mistaken for the one document whose name shows.
+fn chosen_documents_label(paths: &[PathBuf]) -> String {
+    let first = paths
+        .first()
+        .and_then(|path| path.file_name())
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("Document");
+    match paths.len() {
+        0 | 1 => first.to_owned(),
+        count => format!("{first} and {} more in one container", count - 1),
+    }
 }
 
 /// Whether a chosen file can hold a `PAdES` signature at all.
@@ -1061,7 +1091,9 @@ fn main() -> Result<(), slint::PlatformError> {
     let signature = Rc::new(RefCell::new(None::<UiImage>));
     let image_cache = Rc::new(RefCell::new(HashMap::<String, CachedImages>::new()));
     let cards = Rc::new(RefCell::new(Vec::<ManagedCard>::new()));
-    let pdf_document = Rc::new(RefCell::new(None::<PathBuf>));
+    // Every document chosen in one go, in the order it will be carried.
+    // Empty until something is chosen; more than one means a container.
+    let pdf_document = Rc::new(RefCell::new(Vec::<PathBuf>::new()));
     {
         let weak = window.as_weak();
         window.on_puk_code_edited(move |value| {
@@ -1228,29 +1260,35 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(window) = weak.upgrade() else {
                 return;
             };
-            let Some(path) = rfd::FileDialog::new()
-                .add_filter("PDF document", &["pdf"])
+            // The permissive filter is offered first because it is the
+            // true one: a container carries any file type, and a
+            // dialog opening on "PDF document" shows an empty folder
+            // to someone signing a spreadsheet, which reads as a
+            // format this cannot sign rather than as a filter.
+            let Some(paths) = rfd::FileDialog::new()
                 .add_filter("Any document", &["*"])
-                .pick_file()
+                .add_filter("PDF document", &["pdf"])
+                .pick_files()
             else {
                 return;
             };
-            let display = path
-                .file_name()
-                .and_then(std::ffi::OsStr::to_str)
-                .map_or_else(|| path.display().to_string(), str::to_owned);
-            // A PDF can carry its own signature and defaults to that; any
-            // other file type signs into an ASiC-E container, with the
-            // choice shown locked rather than hidden.
-            if is_pdf(&path) {
+            let Some(first) = paths.first() else {
+                return;
+            };
+            // One PDF can carry its own signature and defaults to
+            // that. Anything else - another file type, or a set of
+            // them - signs into one ASiC-E container covered by one
+            // signature, with the choice shown locked rather than
+            // hidden.
+            if paths.len() == 1 && is_pdf(first) {
                 window.set_sign_format_locked(false);
                 window.set_sign_format(0);
             } else {
                 window.set_sign_format_locked(true);
                 window.set_sign_format(1);
             }
-            *pdf_document_state.borrow_mut() = Some(path);
-            window.set_pdf_document_name(display.into());
+            window.set_pdf_document_name(chosen_documents_label(&paths).into());
+            *pdf_document_state.borrow_mut() = paths;
             window.set_pdf_sign_result("".into());
         });
     }
@@ -1269,7 +1307,11 @@ fn main() -> Result<(), slint::PlatformError> {
             if window.get_busy() {
                 return;
             }
-            let Some(input) = pdf_document_state.borrow().clone() else {
+            let chosen = pdf_document_state.borrow().clone();
+            let Some((input, additional_inputs)) = chosen
+                .split_first()
+                .map(|(first, rest)| (first.clone(), rest.to_vec()))
+            else {
                 window.set_pdf_sign_result("Choose a document first.".into());
                 return;
             };
@@ -1278,6 +1320,17 @@ fn main() -> Result<(), slint::PlatformError> {
             } else {
                 Format::Pades
             };
+            // A PDF carries its own signature and cannot carry another
+            // document's, so a set has only the container shape. The
+            // chooser already locks this; refused here too, because a
+            // format that signed one file of a chosen set would leave
+            // the rest unsigned without saying so.
+            if format == Format::Pades && !additional_inputs.is_empty() {
+                window.set_pdf_sign_result(
+                    "Several documents can only be signed into one ASiC-E container.".into(),
+                );
+                return;
+            }
             let (filter_name, extension) = match format {
                 Format::AsicEXades => ("ASiC-E container", "asice"),
                 _ => ("PDF document", "pdf"),
@@ -1299,9 +1352,9 @@ fn main() -> Result<(), slint::PlatformError> {
             if output.extension().is_none() {
                 output.set_extension(extension);
             }
-            if output == input {
+            if output == input || additional_inputs.contains(&output) {
                 window.set_pdf_sign_result(
-                    "Choose a destination different from the original document.".into(),
+                    "Choose a destination different from the original documents.".into(),
                 );
                 return;
             }
@@ -1339,6 +1392,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     .and_then(UiImage::signature_ink);
                 Ok(PdfSigningJob {
                     input,
+                    additional_inputs,
                     output,
                     pin2,
                     can,
@@ -1910,11 +1964,11 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CARD_PRESENCE_WAIT, condense_reader_name, legacy_activation_required, normalized_puk_input,
-        optional_can, pin_change_available, puk_status, recovery_availability,
-        refine_recovery_submission, secret, signed_document_file_name, timestamp_authority_url,
-        timestamp_credentials, validate_gui_pin, validate_gui_pin_format, validate_gui_puk,
-        validate_replacement_pin,
+        CARD_PRESENCE_WAIT, PathBuf, chosen_documents_label, condense_reader_name,
+        legacy_activation_required, normalized_puk_input, optional_can, pin_change_available,
+        puk_status, recovery_availability, refine_recovery_submission, secret,
+        signed_document_file_name, timestamp_authority_url, timestamp_credentials,
+        validate_gui_pin, validate_gui_pin_format, validate_gui_puk, validate_replacement_pin,
     };
     use refineid_lib_core::apdu::status_word::PinRetries;
     use refineid_lib_core::auth::{PinStatus, PukStatus};
@@ -1965,6 +2019,24 @@ mod tests {
             signed_document_file_name(input, &instant, "asice"),
             "Agreement - signed at 2026-08-05T14-30-12Z.asice"
         );
+    }
+
+    /// One document shows its name; a set says how many travel with it,
+    /// so a container covering several is not read as covering one.
+    #[test]
+    fn a_set_of_documents_says_how_many_it_carries() {
+        let one = [PathBuf::from("/documents/Agreement.odt")];
+        assert_eq!(chosen_documents_label(&one), "Agreement.odt");
+        let several = [
+            PathBuf::from("/documents/Agreement.odt"),
+            PathBuf::from("/documents/Annex.xlsx"),
+            PathBuf::from("/photos/Site.jpg"),
+        ];
+        assert_eq!(
+            chosen_documents_label(&several),
+            "Agreement.odt and 2 more in one container"
+        );
+        assert_eq!(chosen_documents_label(&[]), "Document");
     }
 
     #[test]

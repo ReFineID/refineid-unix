@@ -67,12 +67,19 @@ pub struct PdfSignOptions {
 /// Inputs for one qualified `ASiC-E` container signature from the
 /// graphical client.
 ///
-/// No visible-signature request: the container carries the file
+/// No visible-signature request: the container carries the files
 /// unchanged, so there is no signed revision to draw a mark into.
 #[derive(Debug)]
 pub struct AsicSignOptions {
     /// Existing document of any type chosen by the user.
     pub input: PathBuf,
+    /// Further documents to carry in the same container, covered by
+    /// the same signature.
+    ///
+    /// A set signed together is one signature, one PIN use and one
+    /// timestamp over all of them, which is the shape `ASiC-E` exists
+    /// for; signing them one at a time would attest each separately.
+    pub additional_inputs: Vec<PathBuf>,
     /// Distinct destination chosen before the card PIN is used.
     pub output: PathBuf,
     /// Qualified-signature PIN, consumed and zeroized by the sign operation.
@@ -231,6 +238,7 @@ pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
 pub fn sign_asice(options: AsicSignOptions) -> Result<SignReport, SignErrorKind> {
     let AsicSignOptions {
         input,
+        additional_inputs,
         output,
         pin2,
         can,
@@ -239,19 +247,19 @@ pub fn sign_asice(options: AsicSignOptions) -> Result<SignReport, SignErrorKind>
         timestamp_authority,
         timestamp_credentials,
     } = options;
-    if input == output {
+    if input == output || additional_inputs.contains(&output) {
         return Err(SignErrorKind::SignatureWrite {
             path: output,
             source: std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "signed container destination must differ from the original",
+                "signed container destination must differ from every original",
             ),
         });
     }
     let now = crate::card_check::now_date_time();
     let document = DocumentRequest {
         format: Format::AsicEXades,
-        additional_inputs: Vec::new(),
+        additional_inputs,
         signing_time: SigningTime {
             year: now.year(),
             month: now.month(),
