@@ -1,0 +1,20 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Run the check through the flake dev shell so CI's rustfmt is
+      # byte-identical to the pinned toolchain a developer gets from
+      # `nix develop`; a version skew would flag formatting the
+      # maintainer's rustfmt considers clean. fmt parses only, so no
+      # card, reader, or system-library build is involved.
+      - uses: DeterminateSystems/nix-installer-action@main
+      - run: nix develop --command cargo fmt --all --check
