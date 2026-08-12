@@ -195,13 +195,38 @@ pub(crate) fn list_readers(ctx: &Context) -> Result<Vec<String>, PcscError> {
 /// # Errors
 /// Reader name has interior NUL, PC/SC connect failure other
 /// than "no card present", or status query failure.
+/// Establish an `SCardConnect`, tolerating quality-challenged
+/// CCID firmware.
+///
+/// The multi-protocol mask (`Protocols::ANY`) is offered first,
+/// the normal desktop path. A no-name "Generic EMV Smartcard
+/// Reader" (field-observed 2026-08-12) botches that negotiation
+/// and reports the card unresponsive, yet connects cleanly when
+/// offered one protocol at a time -- so on exactly the
+/// `UnresponsiveCard` failure the connect is retried with T=0
+/// then T=1 before giving up. `Ok(None)` means the slot is empty.
+fn connect_resilient(ctx: &Context, cstr: &CString) -> Result<Option<Card>, PcscError> {
+    for protocols in [Protocols::ANY, Protocols::T0, Protocols::T1] {
+        match ctx.connect(cstr, ShareMode::Shared, protocols) {
+            Ok(card) => return Ok(Some(card)),
+            Err(pcsc::Error::NoSmartcard | pcsc::Error::RemovedCard) => return Ok(None),
+            // Fall through to the next, narrower protocol offer
+            // only on the unresponsive-reset failure the flaky
+            // firmware raises.
+            Err(pcsc::Error::UnresponsiveCard) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(PcscError::Pcsc(pcsc::Error::UnresponsiveCard))
+}
+
 pub(crate) fn connect(ctx: &Context, reader: &str) -> Result<Option<PcscCard>, PcscError> {
     let cstr = CString::new(reader)
         .map_err(|e| PcscError::Transport(format!("reader name has interior NUL: {e}")))?;
-    let card = match ctx.connect(&cstr, ShareMode::Shared, Protocols::ANY) {
-        Ok(c) => c,
-        Err(pcsc::Error::NoSmartcard | pcsc::Error::RemovedCard) => return Ok(None),
-        Err(e) => return Err(e.into()),
+    let card = match connect_resilient(ctx, &cstr) {
+        Ok(Some(c)) => c,
+        Ok(None) => return Ok(None),
+        Err(e) => return Err(e),
     };
     let mut names_buf = [0_u8; 256];
     let mut atr_buf = [0_u8; pcsc::MAX_ATR_SIZE];
@@ -219,6 +244,27 @@ pub(crate) fn connect(ctx: &Context, reader: &str) -> Result<Option<PcscCard>, P
 }
 
 // ----- Connected card -----
+
+/// The single-protocol `Protocols` mask for an already-negotiated
+/// [`Protocol`], for a reconnect that must not renegotiate.
+const fn protocols_mask(protocol: Protocol) -> Protocols {
+    match protocol {
+        Protocol::T1 => Protocols::T1,
+        // T=0 and the raw/undefined shapes reconnect as T=0; a
+        // FINEID card is contact T=0 or contactless-as-T=1, both
+        // covered by this and the `other_protocols_mask` fallback.
+        Protocol::T0 | Protocol::RAW => Protocols::T0,
+    }
+}
+
+/// The opposite single-protocol mask, tried when a reconnect on
+/// the active protocol still reports the card unresponsive.
+const fn other_protocols_mask(protocol: Protocol) -> Protocols {
+    match protocol {
+        Protocol::T1 => Protocols::T0,
+        Protocol::T0 | Protocol::RAW => Protocols::T1,
+    }
+}
 
 /// Connected card wrapped around a `pcsc::Card`. Drops back to
 /// the OS PC/SC handle release on `Drop`
@@ -304,8 +350,28 @@ impl PcscCard {
     /// # Errors
     /// `SCardReconnect` or the follow-up `SCardStatus` failing.
     pub fn reset(&mut self) -> Result<(), PcscError> {
-        self.card
-            .reconnect(ShareMode::Shared, Protocols::ANY, Disposition::UnpowerCard)?;
+        // Reconnect on the protocol the card already negotiated
+        // rather than re-offering the ANY mask: the card's
+        // protocol has not changed across a power cycle, and the
+        // ANY renegotiation is exactly what the no-name "Generic
+        // EMV Smartcard Reader" firmware botches (it reports the
+        // card unresponsive). Falls back to the other protocol on
+        // that specific failure.
+        let active = protocols_mask(self.protocol);
+        match self
+            .card
+            .reconnect(ShareMode::Shared, active, Disposition::UnpowerCard)
+        {
+            Ok(()) => {}
+            Err(pcsc::Error::UnresponsiveCard) => {
+                self.card.reconnect(
+                    ShareMode::Shared,
+                    other_protocols_mask(self.protocol),
+                    Disposition::UnpowerCard,
+                )?;
+            }
+            Err(e) => return Err(e.into()),
+        }
         let mut names_buf = [0_u8; 256];
         let mut atr_buf = [0_u8; pcsc::MAX_ATR_SIZE];
         let status = self.card.status2(&mut names_buf, &mut atr_buf)?;
