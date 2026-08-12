@@ -162,8 +162,7 @@ pub(super) fn push_stream_close(
     let mut rows: Vec<u8> = Vec::new();
     for (number, offset) in &entries {
         let narrow = u32::try_from(*offset).map_err(|_ignored| PdfError::MissingStartXref)?;
-        let _ignored =
-            core::fmt::Write::write_fmt(&mut index, format_args!("{number} 1 "));
+        let _ignored = core::fmt::Write::write_fmt(&mut index, format_args!("{number} 1 "));
         rows.push(u8::try_from(TYPE_DIRECT).unwrap_or(1));
         rows.extend_from_slice(&narrow.to_be_bytes());
         rows.extend_from_slice(&0_u16.to_be_bytes());
@@ -214,7 +213,9 @@ fn raw_payload(pdf: &[u8], after: usize, dictionary: &[u8]) -> Result<Vec<u8>, P
     let keyword = find_first(pdf.get(after..).ok_or(PdfError::MissingTrailer)?, b"stream")
         .ok_or(PdfError::MissingTrailer)?;
     // The keyword is followed by CRLF or LF (ISO 32000-1 sec.7.3.8.1).
-    let mut start = after.saturating_add(keyword).saturating_add(b"stream".len());
+    let mut start = after
+        .saturating_add(keyword)
+        .saturating_add(b"stream".len());
     if pdf.get(start) == Some(&b'\r') {
         start = start.saturating_add(1);
     }
@@ -291,8 +292,7 @@ fn unpredicted(data: Vec<u8>, dictionary: &[u8]) -> Result<Vec<u8>, PdfError> {
         return Ok(data);
     }
     if predictor < PNG_PREDICTOR_FLOOR
-        || dictionary_usize(&parameters, b"/Colors").unwrap_or(SUPPORTED_COLORS)
-            != SUPPORTED_COLORS
+        || dictionary_usize(&parameters, b"/Colors").unwrap_or(SUPPORTED_COLORS) != SUPPORTED_COLORS
         || dictionary_usize(&parameters, b"/BitsPerComponent").unwrap_or(SUPPORTED_BITS)
             != SUPPORTED_BITS
     {

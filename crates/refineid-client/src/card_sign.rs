@@ -2233,8 +2233,8 @@ mod tests {
         )
     }
 
-    fn self_anchored_token_fixture()
-    -> Result<VerifiedTimestampToken, Box<dyn core::error::Error>> {
+    fn self_anchored_token_fixture() -> Result<VerifiedTimestampToken, Box<dyn core::error::Error>>
+    {
         let signer_der = crate::trust_roots::PINNED_ROOT_DER
             .first()
             .map(|(_label, der)| *der)

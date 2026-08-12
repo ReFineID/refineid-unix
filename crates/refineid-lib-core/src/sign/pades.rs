@@ -1951,12 +1951,9 @@ impl<'a> PdfIndex<'a> {
         })?;
         match entry.location {
             XrefLocation::Free => None,
-            XrefLocation::Direct { offset } => object_body_at(
-                self.pdf,
-                reference.number,
-                reference.generation,
-                offset,
-            ),
+            XrefLocation::Direct { offset } => {
+                object_body_at(self.pdf, reference.number, reference.generation, offset)
+            }
             XrefLocation::Compressed {
                 container,
                 position,
@@ -2567,9 +2564,9 @@ mod tests {
         AnnotsTarget, DEFAULT_SIGNATURE_CAPACITY, FieldListTarget, MAX_FIELD_NAME_BYTES,
         PdfDictionary, PdfError, PdfIndex, SignatureInk, SignatureMetadata, VisibleSignature,
         XrefEntry, XrefLocation, append_validation_store, complete_object_reference,
-        dictionary_reference,
-        existing_field_names, last_object_header, last_reference, object_body, plan_annotation,
-        plan_field_list, prepare, prepare_document_timestamp, validation_references,
+        dictionary_reference, existing_field_names, last_object_header, last_reference,
+        object_body, plan_annotation, plan_field_list, prepare, prepare_document_timestamp,
+        validation_references,
     };
 
     const CERTIFICATE_DER: &[u8] = include_bytes!(
@@ -2681,14 +2678,14 @@ mod tests {
             rows.push(2);
             rows.extend_from_slice(&4_u16.to_be_bytes());
             rows.extend_from_slice(
-                &u16::try_from(position).expect("small fixture").to_be_bytes(),
+                &u16::try_from(position)
+                    .expect("small fixture")
+                    .to_be_bytes(),
             );
         }
         for offset in [container_at, xref_at] {
             rows.push(1);
-            rows.extend_from_slice(
-                &u16::try_from(offset).expect("small fixture").to_be_bytes(),
-            );
+            rows.extend_from_slice(&u16::try_from(offset).expect("small fixture").to_be_bytes());
             rows.extend_from_slice(&0_u16.to_be_bytes());
         }
         let parameters = if encoded {

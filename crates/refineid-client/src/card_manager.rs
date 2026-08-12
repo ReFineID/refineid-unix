@@ -191,7 +191,8 @@ pub fn sign_pdf(options: PdfSignOptions) -> Result<SignReport, SignErrorKind> {
     // card's ink. Without a number -- or without the feature -- the
     // signature stays invisible and no page changes.
     let visible_signature = if cfg!(feature = "pdf-stamp") {
-        can.is_some().then_some(VisibleSignatureRequest { handwriting })
+        can.is_some()
+            .then_some(VisibleSignatureRequest { handwriting })
     } else {
         None
     };
