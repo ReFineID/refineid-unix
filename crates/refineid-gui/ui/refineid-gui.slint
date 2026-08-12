@@ -3,6 +3,7 @@ import {
     ComboBox,
     HorizontalBox,
     LineEdit,
+    ScrollView,
     Spinner,
     VerticalBox,
 } from "std-widgets.slint";
@@ -66,7 +67,13 @@ export component RefineIdWindow inherits Window {
     in-out property <string> replacement-pin2-error: "";
     in-out property <bool> unblock-pin1-ready: false;
     in-out property <bool> unblock-pin2-ready: false;
-    in-out property <string> pdf-document-name: "";
+    // Every document waiting, by file name, in the order it will be
+    // carried. A name and a count would name one file and hide the
+    // rest, leaving a wrong file in the set impossible to see and
+    // impossible to take out without starting the selection again.
+    in-out property <[string]> pdf-documents: [];
+    // What the set becomes, said only when it is more than one file.
+    in-out property <string> pdf-document-summary: "";
     in-out property <string> pdf-pin2: "";
     in-out property <string> pdf-sign-result: "";
     in-out property <int> sign-operation: 0;
@@ -100,6 +107,8 @@ export component RefineIdWindow inherits Window {
     callback unblock-pin1();
     callback unblock-pin2();
     callback choose-pdf();
+    callback remove-pdf-document(index: int);
+    callback clear-pdf-documents();
     callback sign-pdf();
 
     VerticalBox {
@@ -712,16 +721,56 @@ export component RefineIdWindow inherits Window {
                     vertical-stretch: 0;
                     spacing: 8px;
                     Button {
-                        text: root.pdf-document-name == "" ? "Choose document..." : "Choose another document...";
+                        text: root.pdf-documents.length == 0 ? "Choose documents..." : "Add documents...";
                         height: 36px;
                         vertical-stretch: 0;
                         enabled: !root.busy;
                         clicked => { root.choose-pdf(); }
                     }
+                    Button {
+                        text: "Clear";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        visible: root.pdf-documents.length > 0;
+                        enabled: !root.busy;
+                        clicked => { root.clear-pdf-documents(); }
+                    }
                     Text {
-                        text: root.pdf-document-name == "" ? "No document selected" : root.pdf-document-name;
+                        text: root.pdf-documents.length == 0
+                            ? "No documents selected"
+                            : root.pdf-document-summary;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
+                    }
+                }
+
+                // Every chosen document, each with its own way out: a
+                // set is corrected by taking one file out of it, not by
+                // clearing it and choosing the rest again.
+                if root.pdf-documents.length > 0: ScrollView {
+                    height: 132px;
+                    vertical-stretch: 0;
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        for document[index] in root.pdf-documents: HorizontalBox {
+                            height: 30px;
+                            padding: 0px;
+                            spacing: 8px;
+                            Text {
+                                text: document;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Remove";
+                                height: 30px;
+                                vertical-stretch: 0;
+                                enabled: !root.busy;
+                                clicked => { root.remove-pdf-document(index); }
+                            }
+                        }
                     }
                 }
 
@@ -774,7 +823,7 @@ export component RefineIdWindow inherits Window {
                         text: "Sign...";
                         height: 36px;
                         vertical-stretch: 0;
-                        enabled: !root.busy && root.pdf-document-name != "" && root.pdf-pin2.character-count >= 6 && root.pdf-pin2.character-count <= 12;
+                        enabled: !root.busy && root.pdf-documents.length > 0 && root.pdf-pin2.character-count >= 6 && root.pdf-pin2.character-count <= 12;
                         clicked => { root.sign-pdf(); }
                     }
 

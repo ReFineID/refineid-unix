@@ -857,20 +857,53 @@ fn signed_document_file_name(
     format!("{stem} - signed at {instant}.{extension}")
 }
 
-/// What the window shows for the documents waiting to be signed.
+/// What a set of chosen documents becomes, said only when it is more
+/// than one file: a single row already says everything about itself.
 ///
-/// A set says how many, so a container covering several files is not
-/// mistaken for the one document whose name shows.
-fn chosen_documents_label(paths: &[PathBuf]) -> String {
-    let first = paths
-        .first()
-        .and_then(|path| path.file_name())
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or("Document");
+/// A container carries the set under one signature; `PAdES` signs the
+/// one PDF it is given, so a set never takes that shape.
+fn chosen_documents_summary(paths: &[PathBuf]) -> String {
     match paths.len() {
-        0 | 1 => first.to_owned(),
-        count => format!("{first} and {} more in one container", count - 1),
+        0 | 1 => String::new(),
+        count => format!("{count} documents in one container"),
     }
+}
+
+/// The file names shown for the documents waiting to be signed.
+///
+/// The name alone, never the path: the window is not the place a
+/// holder's directory layout is published, and the name is what the
+/// container will carry the file under.
+fn chosen_document_names(paths: &[PathBuf]) -> Vec<slint::SharedString> {
+    paths
+        .iter()
+        .map(|path| {
+            path.file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .unwrap_or("Document")
+                .into()
+        })
+        .collect()
+}
+
+/// Shows the documents waiting to be signed, and the shape they can
+/// take.
+///
+/// One place decides all three, because they are one fact: a set that
+/// lost a row and kept its count, or kept `PAdES` offered after a
+/// spreadsheet joined it, would be describing documents that are no
+/// longer there. One PDF alone can carry its own signature and
+/// defaults to that; anything else - another file type, or a set of
+/// them - signs into one `ASiC-E` container covered by one signature,
+/// with the choice shown locked rather than hidden.
+fn show_chosen_documents(window: &RefineIdWindow, documents: &[PathBuf]) {
+    window.set_pdf_documents(slint::ModelRc::new(slint::VecModel::from(
+        chosen_document_names(documents),
+    )));
+    window.set_pdf_document_summary(chosen_documents_summary(documents).into());
+    let signs_in_place = matches!(documents, [only] if is_pdf(only));
+    window.set_sign_format_locked(!signs_in_place);
+    window.set_sign_format(i32::from(!signs_in_place));
 }
 
 /// Whether a chosen file can hold a `PAdES` signature at all.
@@ -1272,23 +1305,62 @@ fn main() -> Result<(), slint::PlatformError> {
             else {
                 return;
             };
-            let Some(first) = paths.first() else {
+            if paths.is_empty() {
+                return;
+            }
+            // Chosen documents are added to what is already waiting, so
+            // a set can be gathered from more than one folder without
+            // the second visit discarding the first.
+            let mut documents = pdf_document_state.borrow_mut();
+            for path in paths {
+                if !documents.contains(&path) {
+                    documents.push(path);
+                }
+            }
+            show_chosen_documents(&window, &documents);
+            drop(documents);
+            window.set_pdf_sign_result("".into());
+        });
+    }
+
+    {
+        let weak = window.as_weak();
+        let pdf_document_state = Rc::clone(&pdf_document);
+        window.on_remove_pdf_document(move |index| {
+            let Some(window) = weak.upgrade() else {
                 return;
             };
-            // One PDF can carry its own signature and defaults to
-            // that. Anything else - another file type, or a set of
-            // them - signs into one ASiC-E container covered by one
-            // signature, with the choice shown locked rather than
-            // hidden.
-            if paths.len() == 1 && is_pdf(first) {
-                window.set_sign_format_locked(false);
-                window.set_sign_format(0);
-            } else {
-                window.set_sign_format_locked(true);
-                window.set_sign_format(1);
+            if window.get_busy() {
+                return;
             }
-            window.set_pdf_document_name(chosen_documents_label(&paths).into());
-            *pdf_document_state.borrow_mut() = paths;
+            let mut documents = pdf_document_state.borrow_mut();
+            let Ok(index) = usize::try_from(index) else {
+                return;
+            };
+            if index >= documents.len() {
+                return;
+            }
+            documents.remove(index);
+            show_chosen_documents(&window, &documents);
+            drop(documents);
+            window.set_pdf_sign_result("".into());
+        });
+    }
+
+    {
+        let weak = window.as_weak();
+        let pdf_document_state = Rc::clone(&pdf_document);
+        window.on_clear_pdf_documents(move || {
+            let Some(window) = weak.upgrade() else {
+                return;
+            };
+            if window.get_busy() {
+                return;
+            }
+            let mut documents = pdf_document_state.borrow_mut();
+            documents.clear();
+            show_chosen_documents(&window, &documents);
+            drop(documents);
             window.set_pdf_sign_result("".into());
         });
     }
@@ -1964,10 +2036,10 @@ fn main() -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CARD_PRESENCE_WAIT, PathBuf, chosen_documents_label, condense_reader_name,
-        legacy_activation_required, normalized_puk_input, optional_can, pin_change_available,
-        puk_status, recovery_availability, refine_recovery_submission, secret,
-        signed_document_file_name, timestamp_authority_url, timestamp_credentials,
+        CARD_PRESENCE_WAIT, PathBuf, chosen_document_names, chosen_documents_summary,
+        condense_reader_name, legacy_activation_required, normalized_puk_input, optional_can,
+        pin_change_available, puk_status, recovery_availability, refine_recovery_submission,
+        secret, signed_document_file_name, timestamp_authority_url, timestamp_credentials,
         validate_gui_pin, validate_gui_pin_format, validate_gui_puk, validate_replacement_pin,
     };
     use refineid_lib_core::apdu::status_word::PinRetries;
@@ -2021,22 +2093,39 @@ mod tests {
         );
     }
 
-    /// One document shows its name; a set says how many travel with it,
-    /// so a container covering several is not read as covering one.
+    /// Every document is listed by name, and the path it came from is
+    /// not: the window is not where a holder's directory layout is
+    /// published, and the name is what the container carries it under.
     #[test]
-    fn a_set_of_documents_says_how_many_it_carries() {
+    fn documents_are_listed_by_name_alone() {
+        let documents = [
+            PathBuf::from("/home/someone/private/Agreement.odt"),
+            PathBuf::from("/photos/Site.jpg"),
+        ];
+        assert_eq!(
+            chosen_document_names(&documents),
+            ["Agreement.odt", "Site.jpg"]
+        );
+        assert!(chosen_document_names(&[]).is_empty());
+    }
+
+    /// A single row says everything about itself; a set says what it
+    /// becomes, so a container covering several is not read as
+    /// covering the one whose name happens to be first.
+    #[test]
+    fn only_a_set_says_what_it_becomes() {
         let one = [PathBuf::from("/documents/Agreement.odt")];
-        assert_eq!(chosen_documents_label(&one), "Agreement.odt");
+        assert_eq!(chosen_documents_summary(&one), "");
         let several = [
             PathBuf::from("/documents/Agreement.odt"),
             PathBuf::from("/documents/Annex.xlsx"),
             PathBuf::from("/photos/Site.jpg"),
         ];
         assert_eq!(
-            chosen_documents_label(&several),
-            "Agreement.odt and 2 more in one container"
+            chosen_documents_summary(&several),
+            "3 documents in one container"
         );
-        assert_eq!(chosen_documents_label(&[]), "Document");
+        assert_eq!(chosen_documents_summary(&[]), "");
     }
 
     #[test]
