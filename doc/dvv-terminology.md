@@ -141,6 +141,9 @@ Canonical DVV sources:
 
 ### CAN (Card Access Number)
 
+- suomi: *kortin pääsykoodi*; svenska: *kortets åtkomstkod*. An
+  access code, which is what a Card Access Number is - not a
+  "käyttönumero"/"användningsnummer", which would name usage.
 - 6 digits, **printed on the card front**, **not secret**.
 - Used to set up the PACE secure channel before reading the
   eMRTD application. The CAN is the bearer of the operator's
