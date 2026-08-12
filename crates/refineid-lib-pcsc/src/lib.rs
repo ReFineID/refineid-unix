@@ -749,13 +749,18 @@ pub fn reader_escape(reader: &ReaderId, command: &[u8]) -> Result<Vec<u8>, PcscE
         }
     }
     // Route 2: SCardControl on a shared card connection -- some
-    // stacks only honor control on an active card handle.
-    let card = ctx.connect(&cstr, ShareMode::Shared, Protocols::ANY)?;
-    for code in codes {
-        match card.control(code, command, &mut recv) {
-            Ok(bytes) => return Ok(bytes.to_vec()),
-            Err(pcsc::Error::InvalidValue | pcsc::Error::InvalidParameter) => {}
-            Err(e) => return Err(e.into()),
+    // stacks only honor control on an active card handle. Go
+    // through the resilient connect so a card in a reader that
+    // botches the ANY protocol negotiation is still reachable
+    // here; no card present skips this route to the terminal
+    // error below (a shared-handle control needs a card).
+    if let Some(card) = connect_resilient(&ctx, &cstr)? {
+        for code in codes {
+            match card.control(code, command, &mut recv) {
+                Ok(bytes) => return Ok(bytes.to_vec()),
+                Err(pcsc::Error::InvalidValue | pcsc::Error::InvalidParameter) => {}
+                Err(e) => return Err(e.into()),
+            }
         }
     }
     Err(PcscError::Transport(
