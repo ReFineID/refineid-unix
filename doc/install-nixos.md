@@ -10,7 +10,7 @@ build compiles everything: the dependency build is kept in the local
 Nix store and reused, so following the repository rebuilds just the
 ReFineID crates.
 
-## Fresh machine, shortest path
+## Fresh machine, shortest path (not recommended)
 
 Add to `/etc/nixos/configuration.nix`:
 
@@ -20,10 +20,12 @@ Add to `/etc/nixos/configuration.nix`:
     ((builtins.getFlake "github:ReFineID/ReFineID-Unix").nixosModules.default)
   ];
   programs.refineid.enable = true;
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-  # Keep the dependency build in the store across garbage collection,
-  # so updates never recompile more than the ReFineID crates.
-  nix.settings.keep-outputs = true;
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    # Keep the dependency build in the store across garbage collection,
+    # so updates never recompile more than the ReFineID crates.
+    keep-outputs = true;
+  };
 ```
 
 Browser card login needs `programs.firefox.enable = true;` -- already
@@ -70,8 +72,8 @@ system configuration).
 
 ## 1. System-wide install (recommended)
 
-Works on any NixOS 26.05 or newer with flakes enabled. Flakes are on
-by default on recent installs; if not, add to
+Works on any NixOS 26.05 or newer with flakes enabled.
+If flakes are not enabled, add to
 `/etc/nixos/configuration.nix`:
 
 ```nix
@@ -86,7 +88,10 @@ Add the input and the module to your system flake:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    refineid.url = "github:ReFineID/ReFineID-Unix";
+    refineid = {
+      url = "github:ReFineID/ReFineID-Unix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { nixpkgs, refineid, ... }: {
@@ -129,7 +134,7 @@ in
 `fetchTarball`.) Then:
 
 ```sh
-sudo nixos-rebuild switch
+sudo NIX_CONFIG="experimental-features = nix-command flakes" nixos-rebuild switch
 ```
 
 ### What the option does
@@ -177,14 +182,16 @@ rest lives in that user's profile. In `/etc/nixos/configuration.nix`:
 
 ```nix
   services.pcscd.enable = true;
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-  nix.settings.keep-outputs = true;
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    keep-outputs = true;
+  };
 ```
 
 then, as the user:
 
 ```sh
-nix profile install github:ReFineID/ReFineID-Unix
+nix profile add github:ReFineID/ReFineID-Unix
 ```
 
 That user gets the `refineid` CLI and the GUI, application-menu
