@@ -49,11 +49,8 @@ in
 
     # System-wide p11-kit registration: OpenSSL (pkcs11-provider),
     # GnuTLS, and OpenSSH discover the card through p11-kit.
-    environment.etc."pkcs11/modules/refineid.module".text = ''
-      module: ${cfg.package}/lib/librefineid_pkcs11.so
-      trust-policy: no
-      critical: no
-    '';
+    environment.etc."pkcs11/modules/refineid.module".source =
+      "${cfg.package}/share/p11-kit/modules/refineid.module";
 
     # Firefox does not consult p11-kit on NixOS; the enterprise
     # policy loads the module directly.

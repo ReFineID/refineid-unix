@@ -9,7 +9,11 @@
   };
 
   outputs =
-    { self, nixpkgs, crane }:
+    {
+      self,
+      nixpkgs,
+      crane,
+    }:
     let
       systems = [
         "x86_64-linux"
@@ -24,37 +28,15 @@
         default = refineid;
       });
 
-      nixosModules.refineid = import ./nix/module.nix { refineidPackage = packageFor; };
-      nixosModules.default = self.nixosModules.refineid;
+      nixosModules = {
+        refineid = import ./nix/module.nix { refineidPackage = packageFor; };
+        default = self.nixosModules.refineid;
+      };
 
       overlays.default = final: prev: { refineid = packageFor final; };
 
       devShells = forAllSystems (pkgs: {
-        default = pkgs.mkShell {
-          inputsFrom = [ (packageFor pkgs) ];
-          packages = with pkgs; [
-            clippy
-            rustfmt
-            pcsc-tools # pcsc_scan for reader debugging
-            opensc # pkcs11-tool for module debugging
-            nss.tools # tstclnt/certutil/modutil for the hardware cert-auth rig
-          ];
-          # The GUI dlopens the windowing/GL stack; a dev build has no
-          # baked rpath, so provide the libraries via the environment.
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (
-            with pkgs;
-            [
-              libGL
-              libxkbcommon
-              wayland
-              gtk3
-              libx11
-              libxcursor
-              libxi
-              libxrandr
-            ]
-          );
-        };
+        default = import ./shell.nix { inherit pkgs; };
       });
     };
 }
