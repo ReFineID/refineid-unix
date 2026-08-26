@@ -91,14 +91,23 @@ try:
 except Exception as e:
     print(f"    Submit returned: {e}", flush=True)
 
+# Linux input subsystem keycode constants (linux/input-event-codes.h)
+KEY_ENTER = 28
+EV_KEY_PRESS = 1
+EV_KEY_RELEASE = 0
+KEY_ENTER_PRESS = f"{KEY_ENTER}:{EV_KEY_PRESS}"
+KEY_ENTER_RELEASE = f"{KEY_ENTER}:{EV_KEY_RELEASE}"
+
+DEFAULT_TEST_PIN1 = os.environ.get("REFINEID_TEST_PIN1", "456789")
+
 # Handle certificate selection & PIN dialog
-print("[8] Auto-responding to prompts: Enter on Cert -> PIN 456789 -> Enter...", flush=True)
+print("[8] Auto-responding to prompts: Enter on Cert -> PIN -> Enter...", flush=True)
 time.sleep(1.5)
-subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter (confirm cert)
+subprocess.run(["ydotool", "key", KEY_ENTER_PRESS, KEY_ENTER_RELEASE]) # Confirm cert
 time.sleep(1.5)
-subprocess.run(["ydotool", "type", "--", "456789"]) # Type PIN
+subprocess.run(["ydotool", "type", "--", DEFAULT_TEST_PIN1]) # Type PIN
 time.sleep(0.2)
-subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter (submit PIN)
+subprocess.run(["ydotool", "key", KEY_ENTER_PRESS, KEY_ENTER_RELEASE]) # Submit PIN
 
 print("[9] Monitoring Suomi.fi authentication completion...", flush=True)
 for i in range(25):
@@ -114,11 +123,11 @@ for i in range(25):
                     "args": []
                 }, timeout=2)
                 time.sleep(1)
-                subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter
+                subprocess.run(["ydotool", "key", KEY_ENTER_PRESS, KEY_ENTER_RELEASE])
                 time.sleep(1)
-                subprocess.run(["ydotool", "type", "--", "456789"])
+                subprocess.run(["ydotool", "type", "--", DEFAULT_TEST_PIN1])
                 time.sleep(0.2)
-                subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter
+                subprocess.run(["ydotool", "key", KEY_ENTER_PRESS, KEY_ENTER_RELEASE])
             except Exception:
                 pass
         if ("suomi.fi" in url and not any(k in url for k in ["tunnist", "etusivu", "kortti", "hstidp"])) or any(k in url for k in ["asiointitili", "omat-tiedot", "viestit", "valtuudet", "kansalaiselle"]):

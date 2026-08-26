@@ -436,8 +436,8 @@ mod tests {
     fn accepts_sha256_with_absent_params() {
         let info = digest_info_sha256_absent_params();
         let digest = parse_sha256_digest_info(&info).unwrap();
-        assert_eq!(digest[0], 0x00);
-        assert_eq!(digest[31], 0x1f);
+        let expected: Vec<u8> = (0_u8..32_u8).collect();
+        assert_eq!(digest.as_slice(), expected.as_slice());
     }
 
     #[test]
@@ -476,13 +476,14 @@ mod tests {
 
     #[test]
     fn rejects_truncated_and_trailing_garbage() {
+        const STRAY_TRAILING_BYTE: u8 = 0;
         let info = digest_info_sha256_with_null();
         // Drop the last digest byte.
         let truncated = &info[..info.len().saturating_sub(1)];
         assert_eq!(parse_sha256_digest_info(truncated), Err(CKR_DATA_INVALID));
         // Append a stray byte after a complete structure.
         let mut trailing = info.clone();
-        trailing.push(0x00);
+        trailing.push(STRAY_TRAILING_BYTE);
         assert_eq!(parse_sha256_digest_info(&trailing), Err(CKR_DATA_INVALID));
     }
 

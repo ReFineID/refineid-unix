@@ -302,6 +302,11 @@ fn bool_attr(value: CkBbool) -> AttrValue<'static> {
     AttrValue::Inline(buf, 1)
 }
 
+/// Number of bits per byte used for length shifts.
+const BITS_PER_BYTE: u32 = 8;
+/// Mask to extract a single low byte from an integer.
+const BYTE_MASK: usize = 0xFF;
+
 /// Append a DER length for `len` to `out` (X.690 s8.1.3). Handles the
 /// short form and one/two-octet long forms; every value this module
 /// encodes is far below 65536 bytes.
@@ -314,8 +319,9 @@ fn push_der_len(out: &mut Vec<u8>, len: usize) {
         out.push(DER_LONG_FORM_ONE_OCTET);
         out.push(one);
     } else {
-        let high = u8::try_from(len.checked_shr(8).unwrap_or(0) % 256).unwrap_or(0);
-        let low = u8::try_from(len % 256).unwrap_or(0);
+        let high =
+            u8::try_from((len.checked_shr(BITS_PER_BYTE).unwrap_or(0)) & BYTE_MASK).unwrap_or(0);
+        let low = u8::try_from(len & BYTE_MASK).unwrap_or(0);
         out.push(DER_LONG_FORM_TWO_OCTETS);
         out.push(high);
         out.push(low);
@@ -1144,32 +1150,52 @@ mod tests {
 
     #[test]
     fn empty_der_span_is_an_absent_attribute() {
-        assert_eq!(super::non_empty(&[]), None);
-        assert_eq!(
-            super::non_empty(b"non-empty"),
-            Some(b"non-empty".as_slice())
-        );
+        const EMPTY_SPAN: &[u8] = &[];
+        const NON_EMPTY_SPAN: &[u8] = b"non-empty";
+        assert_eq!(super::non_empty(EMPTY_SPAN), None);
+        assert_eq!(super::non_empty(NON_EMPTY_SPAN), Some(NON_EMPTY_SPAN));
     }
 
     #[test]
     fn der_integer_short_form() {
-        let tlv = der_integer(&[1, 2, 3]);
-        assert_eq!(tlv, vec![DER_TAG_INTEGER, 3, 1, 2, 3]);
+        const TEST_SERIAL_BYTES: [u8; 3] = [1, 2, 3];
+        let tlv = der_integer(&TEST_SERIAL_BYTES);
+        let mut expected = Vec::with_capacity(TEST_SERIAL_BYTES.len().saturating_add(2));
+        expected.push(DER_TAG_INTEGER);
+        expected.push(u8::try_from(TEST_SERIAL_BYTES.len()).expect("test serial len fits in u8"));
+        expected.extend_from_slice(&TEST_SERIAL_BYTES);
+        assert_eq!(tlv, expected);
     }
 
     #[test]
     fn der_octet_string_short_form() {
-        let tlv = der_octet_string(b"hi");
-        assert_eq!(tlv, vec![DER_TAG_OCTET_STRING, 2, b'h', b'i']);
+        const TEST_OCTETS: &[u8] = b"sample-point-bytes";
+        let tlv = der_octet_string(TEST_OCTETS);
+        let mut expected = Vec::with_capacity(TEST_OCTETS.len().saturating_add(2));
+        expected.push(DER_TAG_OCTET_STRING);
+        expected.push(u8::try_from(TEST_OCTETS.len()).expect("test octet len fits in u8"));
+        expected.extend_from_slice(TEST_OCTETS);
+        assert_eq!(tlv, expected);
     }
 
     #[test]
     fn der_length_long_form_one_octet() {
-        let body = vec![0_u8; 200];
+        const TEST_PAYLOAD_LEN: usize = 200;
+        const ZERO_BYTE: u8 = 0;
+        const TAG_OVERHEAD_BYTES: usize = 1;
+        const LENGTH_FLAG_BYTES: usize = 1;
+        const LENGTH_VALUE_BYTES: usize = 1;
+        const TOTAL_HEADER_BYTES: usize =
+            TAG_OVERHEAD_BYTES + LENGTH_FLAG_BYTES + LENGTH_VALUE_BYTES;
+
+        let body = vec![ZERO_BYTE; TEST_PAYLOAD_LEN];
         let tlv = der_octet_string(&body);
         assert_eq!(tlv[0], DER_TAG_OCTET_STRING);
         assert_eq!(tlv[1], DER_LONG_FORM_ONE_OCTET);
-        assert_eq!(tlv[2], 200);
-        assert_eq!(tlv.len(), 203);
+        assert_eq!(
+            tlv[2],
+            u8::try_from(TEST_PAYLOAD_LEN).expect("200 fits in u8")
+        );
+        assert_eq!(tlv.len(), TEST_PAYLOAD_LEN + TOTAL_HEADER_BYTES);
     }
 }

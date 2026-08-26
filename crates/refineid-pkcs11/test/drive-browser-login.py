@@ -11,21 +11,27 @@ import sys
 import threading
 import time
 
+# Linux input subsystem keycode constants (linux/input-event-codes.h)
+KEY_ENTER = 28
+EV_KEY_PRESS = 1
+EV_KEY_RELEASE = 0
+KEY_ENTER_PRESS = f"{KEY_ENTER}:{EV_KEY_PRESS}"
+KEY_ENTER_RELEASE = f"{KEY_ENTER}:{EV_KEY_RELEASE}"
+
+DEFAULT_TEST_PIN1 = os.environ.get("REFINEID_TEST_PIN1", "456789")
+
 def ydo_type(text):
     subprocess.run(["ydotool", "type", "--", text], check=True)
 
 def ydo_key(key_combos):
-    # key_combos e.g. ["28:1", "28:0"] for Enter
     args = ["ydotool", "key"] + key_combos
     subprocess.run(args, check=True)
 
 def press_enter():
-    # Keycode 28 = KEY_ENTER
-    ydo_key(["28:1", "28:0"])
+    ydo_key([KEY_ENTER_PRESS, KEY_ENTER_RELEASE])
 
-def enter_pin(pin="456789"):
-    # Send Enter (to clear/confirm cert dialog if focused), type PIN, send Enter
-    print(f"[*] Typing PIN {pin} and pressing Enter via ydotool...")
+def enter_pin(pin=DEFAULT_TEST_PIN1):
+    print(f"[*] Typing PIN and pressing Enter via ydotool...")
     ydo_type(pin)
     time.sleep(0.2)
     press_enter()
