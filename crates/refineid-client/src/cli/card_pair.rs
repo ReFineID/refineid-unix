@@ -331,10 +331,10 @@ fn detect_local_ips() -> Vec<IpAddr> {
     ips
 }
 
-/// Generate a cryptographically random 6-digit numeric pairing code (100000..999999).
+/// Generate a cryptographically random 6-digit numeric pairing code (000000..999999).
 fn generate_random_pairing_code() -> u32 {
     let mut bytes = [0u8; 4];
     refineid_lib_core::rng::fill(&mut bytes).expect("CSPRNG");
     let val = u32::from_ne_bytes(bytes);
-    100_000 + (val % 900_000)
+    val % 1_000_000
 }
