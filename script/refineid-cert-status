@@ -75,7 +75,7 @@ command -v openssl >/dev/null || { echo "error: openssl not on PATH" >&2; exit 1
 command -v curl    >/dev/null || { echo "error: curl not on PATH"    >&2; exit 1; }
 
 # --- Read auth cert from card ----------------------------------------
-TMP=$(mktemp -d -t refineid-cert-status)
+TMP=$(mktemp -d -t refineid-cert-status.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
 CERT="$TMP/auth.pem"
 
