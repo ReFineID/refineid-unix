@@ -506,9 +506,17 @@ mod tests {
 
     #[test]
     fn basic_authorization_rejects_header_injection() {
-        assert!(super::validate_basic_authorization("Basic dXNlcjpwYXNz").is_ok());
+        let valid_auth = format!(
+            "Basic {}",
+            refineid_lib_core::base64::encode(b"test-user:test-pass")
+        );
+        assert!(super::validate_basic_authorization(&valid_auth).is_ok());
         assert!(super::validate_basic_authorization("Bearer token").is_err());
-        assert!(super::validate_basic_authorization("Basic dXNlcg==\r\nX-Evil: yes").is_err());
+        let injection = format!(
+            "Basic {}\r\nX-Evil: yes",
+            refineid_lib_core::base64::encode(b"user")
+        );
+        assert!(super::validate_basic_authorization(&injection).is_err());
         assert!(super::validate_basic_authorization("Basic abc=def=").is_err());
     }
 
@@ -529,13 +537,17 @@ mod tests {
             response: Cursor::new(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
             written: Vec::new(),
         };
+        let auth_header = format!(
+            "Basic {}",
+            refineid_lib_core::base64::encode(b"test-user:test-pass")
+        );
         super::send_request(
             &mut io,
             &url,
             super::RequestBody::Bytes {
                 content_type: "application/timestamp-query",
                 body: b"DER",
-                authorization: Some("Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+                authorization: Some(&auth_header),
             },
             1024,
             "test",
@@ -543,7 +555,7 @@ mod tests {
         .expect("scripted response");
         let request = String::from_utf8(io.written).expect("ASCII request");
         assert_eq!(request.matches("Authorization:").count(), 1);
-        assert!(request.contains("Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\r\n"));
+        assert!(request.contains(&format!("Authorization: {auth_header}\r\n")));
         assert!(request.ends_with("\r\n\r\nDER"));
     }
 

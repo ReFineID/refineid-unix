@@ -1259,13 +1259,17 @@ mod tests {
     #[test]
     fn authority_credentials_are_refused_before_plain_http_io() {
         let url = Uri::parse("http://127.0.0.1:9/tsa".to_owned()).expect("test URL");
+        let auth_header = format!(
+            "Basic {}",
+            refineid_lib_core::base64::encode(b"test-user:test-pass")
+        );
         let error = post_authority(
             &url,
             "application/timestamp-query",
             b"request",
             1024,
             "test",
-            Some("Basic dXNlcjpwYXNz"),
+            Some(&auth_header),
         )
         .expect_err("credentials cannot cross plain HTTP");
         assert!(matches!(error, HttpError::InsecureCredentials));

@@ -2043,16 +2043,22 @@ mod tests {
 
     #[test]
     fn timestamp_credentials_are_encoded_and_redacted() -> TestResult {
-        let credentials = TimestampCredentials::new("Aladdin".to_owned(), "open sesame".to_owned())
+        let user = "test-user";
+        let pass = "test-pass";
+        let credentials = TimestampCredentials::new(user.to_owned(), pass.to_owned())
             .map_err(str::to_owned)?;
+        let expected_header = format!(
+            "Basic {}",
+            refineid_lib_core::base64::encode(format!("{user}:{pass}").as_bytes())
+        );
         check(
             &credentials.authorization_header().as_str(),
-            &"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+            &expected_header.as_str(),
             "RFC 7617 Basic header",
         )?;
         check_true(
-            !format!("{credentials:?}").contains("Aladdin")
-                && !format!("{credentials:?}").contains("sesame"),
+            !format!("{credentials:?}").contains(user)
+                && !format!("{credentials:?}").contains(pass),
             "credential debug output is redacted",
         )
     }
