@@ -233,24 +233,121 @@ impl AttrValue<'_> {
     }
 }
 
+/// A parsed and verified CA certificate object on the token.
+#[derive(Debug, Clone)]
+pub(crate) struct CaObject {
+    cert: OwnedCert,
+    id: Sha1,
+    label: String,
+    serial_der: Vec<u8>,
+}
+
+impl CaObject {
+    pub(crate) fn new(cert: OwnedCert) -> Self {
+        let view = cert.view();
+        let label = view
+            .subject
+            .common_name()
+            .map_or_else(|| "CA Certificate".to_owned(), |cn| cn.as_str().to_owned());
+        let id = Sha1::of(view.spki.as_der());
+        let serial_der = der_integer(view.serial_der);
+        Self {
+            cert,
+            id,
+            label,
+            serial_der,
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn cert(&self) -> &OwnedCert {
+        &self.cert
+    }
+
+    #[must_use]
+    pub(crate) fn id_bytes(&self) -> &[u8] {
+        self.id.as_bytes()
+    }
+
+    #[must_use]
+    pub(crate) fn label_bytes(&self) -> &[u8] {
+        self.label.as_bytes()
+    }
+
+    #[must_use]
+    pub(crate) fn serial_der(&self) -> &[u8] {
+        &self.serial_der
+    }
+}
+
+/// Strongly typed key material parsed from the card profile certificate SPKI.
+#[derive(Debug, Clone)]
+pub(crate) enum TokenKeyMaterial {
+    Rsa {
+        modulus: Vec<u8>,
+        modulus_bits: CkUlong,
+        public_exponent: Vec<u8>,
+    },
+    Ec {
+        params: &'static [u8],
+        point: Vec<u8>,
+    },
+}
+
+impl TokenKeyMaterial {
+    fn extract(spki: &refineid_lib_core::x509::SpkiDer<'_>) -> Result<Self, CkRv> {
+        match spki.algorithm() {
+            PublicKeyAlgorithm::Rsa { modulus_bits } => {
+                let public = extract_rsa_public_key(spki.as_der()).ok_or(CKR_DEVICE_ERROR)?;
+                let bits = CkUlong::try_from(modulus_bits).map_err(|_| CKR_DEVICE_ERROR)?;
+                Ok(Self::Rsa {
+                    modulus: public.modulus.as_bytes().to_vec(),
+                    modulus_bits: bits,
+                    public_exponent: public.exponent.as_bytes().to_vec(),
+                })
+            }
+            PublicKeyAlgorithm::Ec(EcCurve::Secp384r1) => {
+                let point = spki.ec_public_key_point().ok_or(CKR_DEVICE_ERROR)?;
+                Ok(Self::Ec {
+                    params: &EC_PARAMS_SECP384R1,
+                    point: der_octet_string(point.as_bytes()),
+                })
+            }
+            PublicKeyAlgorithm::Ec(_)
+            | PublicKeyAlgorithm::EcExplicit { .. }
+            | PublicKeyAlgorithm::Other => Err(CKR_DEVICE_ERROR),
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn key_type(&self) -> CkUlong {
+        match self {
+            Self::Rsa { .. } => CKK_RSA,
+            Self::Ec { .. } => CKK_EC,
+        }
+    }
+
+    #[must_use]
+    pub(crate) const fn mechanism(&self) -> Mechanism {
+        match self {
+            Self::Rsa { .. } => Mechanism::RsaPkcs,
+            Self::Ec { .. } => Mechanism::Ecdsa,
+        }
+    }
+}
+
 /// The token objects, parsed from the card's authentication
 /// certificate and cached per slot while the same card stays present.
 #[derive(Debug, Clone)]
 pub struct TokenObjects {
     /// The parsed leaf authentication certificate.
     auth_cert: OwnedCert,
+    /// [`CKA_ID`]: SHA-1 of the SPKI DER, shared by cert and key.
+    auth_cert_id: Sha1,
+    /// Human-readable label for [`CKA_LABEL`] (common name, else [`DEFAULT_LABEL`]).
+    auth_cert_label: String,
     /// Pre-encoded serial number DER INTEGER for the authentication certificate.
     auth_cert_serial_der: Vec<u8>,
-    /// Key type: [`CKK_RSA`] or [`CKK_EC`], from the certificate SPKI.
-    key_type: CkUlong,
-    /// Sign mechanism this card profile uses, derived from
-    /// [`Self::key_type`].
-    mechanism: Mechanism,
-    /// UTF-8 label bytes for [`CKA_LABEL`] (common name, else
-    /// [`DEFAULT_LABEL`]).
-    label: Vec<u8>,
-    /// [`CKA_ID`]: SHA-1 of the SPKI DER, shared by cert and key.
-    id: Vec<u8>,
     /// Chip serial from PKCS#15 EF.TokenInfo: the plastic-printed
     /// card identifier when [`derive_printed_serial`] recognises
     /// the chip generation (the form a citizen can check against
@@ -258,25 +355,10 @@ pub struct TokenObjects {
     /// [`render_token_serial`]; empty when the card reports none.
     /// Reported in `CK_TOKEN_INFO.serialNumber`.
     token_serial: String,
-    /// [`CKA_MODULUS`] for an RSA key: big-endian modulus bytes.
-    modulus: Option<Vec<u8>>,
-    /// [`CKA_MODULUS_BITS`] for an RSA key.
-    modulus_bits: Option<CkUlong>,
-    /// [`CKA_PUBLIC_EXPONENT`] for an RSA key: big-endian bytes.
-    public_exponent: Option<Vec<u8>>,
-    /// [`CKA_EC_PARAMS`] for an EC key: the named-curve OID DER.
-    ec_params: Option<Vec<u8>>,
-    /// [`CKA_EC_POINT`] for an EC key: DER OCTET STRING of the SEC1
-    /// point.
-    ec_point: Option<Vec<u8>>,
-    /// Intermediate and root CA certificates as strongly-typed [`OwnedCert`]s.
-    ca_certs: Vec<OwnedCert>,
-    /// Precomputed labels for CA certificates.
-    ca_labels: Vec<Vec<u8>>,
-    /// Precomputed IDs (SPKI SHA-1) for CA certificates.
-    ca_ids: Vec<Vec<u8>>,
-    /// Precomputed serial DER INTEGERs for CA certificates.
-    ca_serials: Vec<Vec<u8>>,
+    /// Key-type specific material extracted and validated from the SPKI.
+    key_material: TokenKeyMaterial,
+    /// Intermediate and root CA certificate objects.
+    ca_objects: Vec<CaObject>,
 }
 
 fn load_static_ca_cert(cert_der: &'static [u8]) -> Result<OwnedCert, CkRv> {
@@ -340,13 +422,8 @@ fn der_integer(value: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Treat an empty slice as an absent attribute.
-fn non_empty(bytes: &[u8]) -> Option<&[u8]> {
-    if bytes.is_empty() { None } else { Some(bytes) }
-}
-
-/// Wrap raw bytes in a DER `OCTET STRING` TLV (X.690 s8.7). Used to
-/// form [`CKA_EC_POINT`] from the SEC1 point.
+/// Wrap a SEC1 EC point in a DER `OCTET STRING` TLV for [`CKA_EC_POINT`]
+/// per PKCS#11 v2.40 s2.3.4.
 fn der_octet_string(value: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(value.len().saturating_add(2));
     out.push(DER_TAG_OCTET_STRING);
@@ -355,8 +432,15 @@ fn der_octet_string(value: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Reject empty byte slices by mapping them to `None`.
+fn non_empty(bytes: &[u8]) -> Option<&[u8]> {
+    if bytes.is_empty() { None } else { Some(bytes) }
+}
+
 impl TokenObjects {
-    /// Parse the token objects from a certificate DER blob.
+    /// Build token objects from the card's leaf authentication certificate
+    /// DER bytes. Loads and verifies all embedded intermediate and root CA
+    /// trust anchors.
     ///
     /// # Errors
     /// [`CKR_DEVICE_ERROR`] if the DER does not parse or the key
@@ -364,107 +448,37 @@ impl TokenObjects {
     /// auth profiles).
     pub(crate) fn from_cert_der(cert_der: Vec<u8>) -> Result<Self, CkRv> {
         let auth_cert = OwnedCert::from_der(cert_der).map_err(|_parse_err| CKR_DEVICE_ERROR)?;
-        let (key_type, mechanism, modulus, modulus_bits, public_exponent, ec_params, ec_point) = {
-            let view = auth_cert.view();
-            Self::extract_key_material(&view.spki)?
-        };
         let view = auth_cert.view();
-        let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
-        let label = view.subject.common_name().map_or_else(
-            || DEFAULT_LABEL.as_bytes().to_vec(),
-            |cn| cn.as_str().as_bytes().to_vec(),
-        );
+        let key_material = TokenKeyMaterial::extract(&view.spki)?;
+        let auth_cert_id = Sha1::of(view.spki.as_der());
+        let auth_cert_label = view
+            .subject
+            .common_name()
+            .map_or_else(|| DEFAULT_LABEL.to_owned(), |cn| cn.as_str().to_owned());
         let auth_cert_serial_der = der_integer(view.serial_der);
-        let ca_certs = vec![
-            load_static_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
-            load_static_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
-            load_static_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
-            load_static_ca_cert(DVV_CA_ORG_G4R_DER)?,
-            load_static_ca_cert(DVV_CA_ROOT_ECC_DER)?,
-            load_static_ca_cert(DVV_CA_ROOT_RSA_DER)?,
+        let ca_objects = vec![
+            CaObject::new(load_static_ca_cert(DVV_CA_CITIZEN_G4E_DER)?),
+            CaObject::new(load_static_ca_cert(DVV_CA_CITIZEN_G4R_DER)?),
+            CaObject::new(load_static_ca_cert(DVV_CA_CITIZEN_G3_DER)?),
+            CaObject::new(load_static_ca_cert(DVV_CA_ORG_G4R_DER)?),
+            CaObject::new(load_static_ca_cert(DVV_CA_ROOT_ECC_DER)?),
+            CaObject::new(load_static_ca_cert(DVV_CA_ROOT_RSA_DER)?),
         ];
-        let mut ca_labels = Vec::with_capacity(ca_certs.len());
-        let mut ca_ids = Vec::with_capacity(ca_certs.len());
-        let mut ca_serials = Vec::with_capacity(ca_certs.len());
-        for ca in &ca_certs {
-            let v = ca.view();
-            ca_labels.push(v.subject.common_name().map_or_else(
-                || b"CA Certificate".to_vec(),
-                |cn| cn.as_str().as_bytes().to_vec(),
-            ));
-            ca_ids.push(Sha1::of(v.spki.as_der()).as_bytes().to_vec());
-            ca_serials.push(der_integer(v.serial_der));
-        }
         Ok(Self {
             auth_cert,
+            auth_cert_id,
+            auth_cert_label,
             auth_cert_serial_der,
-            key_type,
-            mechanism,
-            label,
-            id,
             token_serial: String::new(),
-            modulus,
-            modulus_bits,
-            public_exponent,
-            ec_params,
-            ec_point,
-            ca_certs,
-            ca_labels,
-            ca_ids,
-            ca_serials,
+            key_material,
+            ca_objects,
         })
-    }
-
-    /// Extract key-type-specific attributes from the SPKI.
-    fn extract_key_material(
-        spki: &refineid_lib_core::x509::SpkiDer<'_>,
-    ) -> Result<
-        (
-            CkUlong,
-            Mechanism,
-            Option<Vec<u8>>,
-            Option<CkUlong>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-        ),
-        CkRv,
-    > {
-        match spki.algorithm() {
-            PublicKeyAlgorithm::Rsa { modulus_bits } => {
-                let public = extract_rsa_public_key(spki.as_der()).ok_or(CKR_DEVICE_ERROR)?;
-                Ok((
-                    CKK_RSA,
-                    Mechanism::RsaPkcs,
-                    Some(public.modulus.as_bytes().to_vec()),
-                    CkUlong::try_from(modulus_bits).ok(),
-                    Some(public.exponent.as_bytes().to_vec()),
-                    None,
-                    None,
-                ))
-            }
-            PublicKeyAlgorithm::Ec(EcCurve::Secp384r1) => {
-                let point = spki.ec_public_key_point().ok_or(CKR_DEVICE_ERROR)?;
-                Ok((
-                    CKK_EC,
-                    Mechanism::Ecdsa,
-                    None,
-                    None,
-                    None,
-                    Some(EC_PARAMS_SECP384R1.to_vec()),
-                    Some(der_octet_string(point.as_bytes())),
-                ))
-            }
-            PublicKeyAlgorithm::Ec(_)
-            | PublicKeyAlgorithm::EcExplicit { .. }
-            | PublicKeyAlgorithm::Other => Err(CKR_DEVICE_ERROR),
-        }
     }
 
     /// The sign mechanism for this card profile.
     #[must_use]
     pub(crate) const fn mechanism(&self) -> Mechanism {
-        self.mechanism
+        self.key_material.mechanism()
     }
 
     /// The rendered chip serial from EF.TokenInfo; empty when the
@@ -501,23 +515,20 @@ impl TokenObjects {
 
     /// Attribute lookup for an embedded or on-card CA certificate object.
     fn ca_attribute(&self, index: usize, attr: CkAttributeType) -> Option<AttrValue<'_>> {
-        let ca = self.ca_certs.get(index)?;
-        let view = ca.view();
-        let label = self.ca_labels.get(index)?;
-        let id = self.ca_ids.get(index)?;
-        let serial = self.ca_serials.get(index)?;
+        let ca = self.ca_objects.get(index)?;
+        let view = ca.cert.view();
         match attr {
             CKA_CLASS => Some(ulong_attr(CKO_CERTIFICATE)),
             CKA_CERTIFICATE_TYPE => Some(ulong_attr(CKC_X_509)),
             CKA_CERTIFICATE_CATEGORY => Some(ulong_attr(CK_CERTIFICATE_CATEGORY_AUTHORITY)),
             CKA_TOKEN | CKA_TRUSTED => Some(bool_attr(CK_TRUE)),
             CKA_PRIVATE => Some(bool_attr(CK_FALSE)),
-            CKA_LABEL => Some(AttrValue::Borrowed(label)),
-            CKA_ID => Some(AttrValue::Borrowed(id)),
-            CKA_VALUE => Some(AttrValue::Borrowed(ca.as_der())),
+            CKA_LABEL => Some(AttrValue::Borrowed(ca.label_bytes())),
+            CKA_ID => Some(AttrValue::Borrowed(ca.id_bytes())),
+            CKA_VALUE => Some(AttrValue::Borrowed(ca.cert.as_der())),
             CKA_ISSUER => non_empty(view.issuer.as_der()).map(AttrValue::Borrowed),
             CKA_SUBJECT => non_empty(view.subject.as_der()).map(AttrValue::Borrowed),
-            CKA_SERIAL_NUMBER => non_empty(serial).map(AttrValue::Borrowed),
+            CKA_SERIAL_NUMBER => non_empty(ca.serial_der()).map(AttrValue::Borrowed),
             _ => None,
         }
     }
@@ -536,11 +547,11 @@ impl TokenObjects {
             CKA_CLASS => Some(ulong_attr(CKO_CERTIFICATE)),
             CKA_CERTIFICATE_TYPE => Some(ulong_attr(CKC_X_509)),
             CKA_CERTIFICATE_CATEGORY => Some(ulong_attr(CK_CERTIFICATE_CATEGORY_TOKEN_USER)),
-            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_material.key_type())),
             CKA_TOKEN => Some(bool_attr(CK_TRUE)),
             CKA_PRIVATE | CKA_TRUSTED | CKA_LOCAL => Some(bool_attr(CK_FALSE)),
-            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
-            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_LABEL => Some(AttrValue::Borrowed(self.auth_cert_label.as_bytes())),
+            CKA_ID => Some(AttrValue::Borrowed(self.auth_cert_id.as_bytes())),
             CKA_VALUE => Some(AttrValue::Borrowed(self.auth_cert.as_der())),
             CKA_ISSUER => non_empty(view.issuer.as_der()).map(AttrValue::Borrowed),
             CKA_SUBJECT => non_empty(view.subject.as_der()).map(AttrValue::Borrowed),
@@ -557,19 +568,36 @@ impl TokenObjects {
     fn public_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue<'_>> {
         match attr {
             CKA_CLASS => Some(ulong_attr(CKO_PUBLIC_KEY)),
-            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_material.key_type())),
             CKA_TOKEN | CKA_VERIFY => Some(bool_attr(CK_TRUE)),
             CKA_PRIVATE | CKA_ENCRYPT | CKA_WRAP | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
-            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
-            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_LABEL => Some(AttrValue::Borrowed(self.auth_cert_label.as_bytes())),
+            CKA_ID => Some(AttrValue::Borrowed(self.auth_cert_id.as_bytes())),
             CKA_SUBJECT => {
                 non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed)
             }
-            CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
-            CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
-            CKA_PUBLIC_EXPONENT => self.public_exponent.as_deref().map(AttrValue::Borrowed),
-            CKA_EC_PARAMS => self.ec_params.as_deref().map(AttrValue::Borrowed),
-            CKA_EC_POINT => self.ec_point.as_deref().map(AttrValue::Borrowed),
+            CKA_MODULUS => match &self.key_material {
+                TokenKeyMaterial::Rsa { modulus, .. } => Some(AttrValue::Borrowed(modulus)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_MODULUS_BITS => match &self.key_material {
+                TokenKeyMaterial::Rsa { modulus_bits, .. } => Some(ulong_attr(*modulus_bits)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_PUBLIC_EXPONENT => match &self.key_material {
+                TokenKeyMaterial::Rsa {
+                    public_exponent, ..
+                } => Some(AttrValue::Borrowed(public_exponent)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_EC_PARAMS => match &self.key_material {
+                TokenKeyMaterial::Ec { params, .. } => Some(AttrValue::Borrowed(params)),
+                TokenKeyMaterial::Rsa { .. } => None,
+            },
+            CKA_EC_POINT => match &self.key_material {
+                TokenKeyMaterial::Ec { point, .. } => Some(AttrValue::Borrowed(point)),
+                TokenKeyMaterial::Rsa { .. } => None,
+            },
             _ => None,
         }
     }
@@ -585,7 +613,7 @@ impl TokenObjects {
     fn private_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue<'_>> {
         match attr {
             CKA_CLASS => Some(ulong_attr(CKO_PRIVATE_KEY)),
-            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_material.key_type())),
             CKA_TOKEN
             | CKA_PRIVATE
             | CKA_SIGN
@@ -597,37 +625,48 @@ impl TokenObjects {
             | CKA_SIGN_RECOVER
             | CKA_UNWRAP
             | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
-            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
-            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_LABEL => Some(AttrValue::Borrowed(self.auth_cert_label.as_bytes())),
+            CKA_ID => Some(AttrValue::Borrowed(self.auth_cert_id.as_bytes())),
             CKA_SUBJECT => {
                 non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed)
             }
             CKA_VALUE => Some(AttrValue::Sensitive),
-            CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
-            CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
-            CKA_PUBLIC_EXPONENT => self.public_exponent.as_deref().map(AttrValue::Borrowed),
-            CKA_EC_PARAMS => self.ec_params.as_deref().map(AttrValue::Borrowed),
-            CKA_EC_POINT => self.ec_point.as_deref().map(AttrValue::Borrowed),
+            CKA_MODULUS => match &self.key_material {
+                TokenKeyMaterial::Rsa { modulus, .. } => Some(AttrValue::Borrowed(modulus)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_MODULUS_BITS => match &self.key_material {
+                TokenKeyMaterial::Rsa { modulus_bits, .. } => Some(ulong_attr(*modulus_bits)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_PUBLIC_EXPONENT => match &self.key_material {
+                TokenKeyMaterial::Rsa {
+                    public_exponent, ..
+                } => Some(AttrValue::Borrowed(public_exponent)),
+                TokenKeyMaterial::Ec { .. } => None,
+            },
+            CKA_EC_PARAMS => match &self.key_material {
+                TokenKeyMaterial::Ec { params, .. } => Some(AttrValue::Borrowed(params)),
+                TokenKeyMaterial::Rsa { .. } => None,
+            },
+            CKA_EC_POINT => match &self.key_material {
+                TokenKeyMaterial::Ec { point, .. } => Some(AttrValue::Borrowed(point)),
+                TokenKeyMaterial::Rsa { .. } => None,
+            },
             _ => None,
         }
     }
 
     /// Add an on-card CA certificate to the token cache.
     pub(crate) fn prepend_ca_cert(&mut self, cert: OwnedCert) {
-        if self.ca_certs.iter().any(|c| c.as_der() == cert.as_der()) {
+        if self
+            .ca_objects
+            .iter()
+            .any(|obj| obj.cert.as_der() == cert.as_der())
+        {
             return;
         }
-        let v = cert.view();
-        let label = v.subject.common_name().map_or_else(
-            || b"CA Certificate".to_vec(),
-            |cn| cn.as_str().as_bytes().to_vec(),
-        );
-        let id = Sha1::of(v.spki.as_der()).as_bytes().to_vec();
-        let serial = der_integer(v.serial_der);
-        self.ca_certs.insert(0, cert);
-        self.ca_labels.insert(0, label);
-        self.ca_ids.insert(0, id);
-        self.ca_serials.insert(0, serial);
+        self.ca_objects.insert(0, CaObject::new(cert));
     }
 
     /// Software signature verification against the cached
