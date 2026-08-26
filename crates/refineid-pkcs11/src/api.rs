@@ -784,8 +784,25 @@ unsafe extern "C" fn c_login(
     // SAFETY: caller guarantees pin_ptr points to `pin_len` bytes;
     // the bytes are copied straight into a zeroizing PinBytes and
     // never logged (PIN secrecy rule).
-    let pin1 = match PinBytes::new(unsafe { core::slice::from_raw_parts(pin_ptr, length) }.to_vec())
-    {
+    let caller_bytes =
+        unsafe { core::slice::from_raw_parts(pin_ptr, length) }.to_vec();
+
+    // When the `test-pin-env` feature is active and the environment
+    // variable `REFINEID_TEST_PIN1` is set, override the caller-supplied
+    // PIN with the env value.  This lets Firefox skip its GUI PIN dialog
+    // in fully automated test runs (Marionette / CI headless).  The feature
+    // is never compiled into production (non-test) builds.
+    #[cfg(feature = "test-pin-env")]
+    let caller_bytes = {
+        if let Ok(env_pin) = std::env::var("REFINEID_TEST_PIN1") {
+            diag!("C_Login: REFINEID_TEST_PIN1 env override (test-pin-env feature)");
+            env_pin.into_bytes()
+        } else {
+            caller_bytes
+        }
+    };
+
+    let pin1 = match PinBytes::new(caller_bytes) {
         Ok(pin) => pin,
         Err(error) => return classify_pin_error(error),
     };

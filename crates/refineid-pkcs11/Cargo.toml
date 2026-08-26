@@ -20,6 +20,11 @@ publish = false
 # once the ECC path is validated.
 default = []
 pin-change = []
+# test-pin-env: when C_Login is called, override the caller-supplied PIN
+# with the REFINEID_TEST_PIN1 environment variable if it is set.  This
+# lets Marionette / headless automation skip Firefox's GUI PIN dialog.
+# NEVER enable in production builds.
+test-pin-env = []
 
 [lints]
 workspace = true
