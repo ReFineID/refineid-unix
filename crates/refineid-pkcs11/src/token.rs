@@ -510,9 +510,8 @@ impl TokenObjects {
             CKA_CLASS => Some(ulong_attr(CKO_CERTIFICATE)),
             CKA_CERTIFICATE_TYPE => Some(ulong_attr(CKC_X_509)),
             CKA_CERTIFICATE_CATEGORY => Some(ulong_attr(CK_CERTIFICATE_CATEGORY_AUTHORITY)),
-            CKA_TOKEN => Some(bool_attr(CK_TRUE)),
+            CKA_TOKEN | CKA_TRUSTED => Some(bool_attr(CK_TRUE)),
             CKA_PRIVATE => Some(bool_attr(CK_FALSE)),
-            CKA_TRUSTED => Some(bool_attr(CK_TRUE)),
             CKA_LABEL => Some(AttrValue::Borrowed(label)),
             CKA_ID => Some(AttrValue::Borrowed(id)),
             CKA_VALUE => Some(AttrValue::Borrowed(ca.as_der())),
@@ -713,12 +712,10 @@ impl TokenObjects {
         kind: ObjectKind,
         template: &[(CkAttributeType, Vec<u8>)],
     ) -> bool {
-        template
-            .iter()
-            .all(|(attr, wanted)| match self.attribute(kind, *attr) {
-                Some(val) => val.as_bytes() == Some(wanted.as_slice()),
-                None => false,
-            })
+        template.iter().all(|(attr, wanted)| {
+            self.attribute(kind, *attr)
+                .map_or(false, |val| val.as_bytes() == Some(wanted.as_slice()))
+        })
     }
 }
 
@@ -765,10 +762,12 @@ pub(super) fn build_token_objects(reader_name: &str) -> Result<TokenObjects, CkR
         CertSlot::RootCa,
         CertSlot::SignatureAlt,
     ] {
-        if let Ok(der) = card.read_certificate(slot) {
-            if let Ok(c) = OwnedCert::from_der(der.into_bytes()) {
-                on_card_cas.push(c);
-            }
+        if let Ok(c) = card
+            .read_certificate(slot)
+            .map_err(|_| ())
+            .and_then(|der| OwnedCert::from_der(der.into_bytes()).map_err(|_| ()))
+        {
+            on_card_cas.push(c);
         }
     }
     drop(card);

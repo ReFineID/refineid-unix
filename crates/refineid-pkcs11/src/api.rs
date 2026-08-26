@@ -479,7 +479,7 @@ unsafe extern "C" fn c_get_token_info(slot_id: CkSlotId, info: CkTokenInfoPtr) -
 /// from typing PIN2 into a PIN1 prompt.  The serial still names the
 /// physical card.
 ///
-/// The string matches the Apple TokenExtension localisation key:
+/// The string matches the Apple `TokenExtension` localisation key:
 ///   English  "Basic (PIN 1)"
 ///   Finnish  "Perus (PIN 1)"
 ///   Swedish  "Bas (PIN 1)"
@@ -792,14 +792,10 @@ unsafe extern "C" fn c_login(
     // in fully automated test runs (Marionette / CI headless).  The feature
     // is never compiled into production (non-test) builds.
     #[cfg(feature = "test-pin-env")]
-    let caller_bytes = {
-        if let Ok(env_pin) = std::env::var("REFINEID_TEST_PIN1") {
-            diag!("C_Login: REFINEID_TEST_PIN1 env override (test-pin-env feature)");
-            env_pin.into_bytes()
-        } else {
-            caller_bytes
-        }
-    };
+    let caller_bytes = std::env::var("REFINEID_TEST_PIN1").map_or(caller_bytes, |env_pin| {
+        diag!("C_Login: REFINEID_TEST_PIN1 env override (test-pin-env feature)");
+        env_pin.into_bytes()
+    });
 
     let pin1 = match PinBytes::new(caller_bytes) {
         Ok(pin) => pin,
