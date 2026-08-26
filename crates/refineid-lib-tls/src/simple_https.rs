@@ -567,9 +567,8 @@ mod tests {
     /// a commit. It is here because a TLS backend that compiles proves
     /// nothing: what has to be true is that the handshake completes
     /// against a live server with the platform CA bundle, and that the
-    /// answer comes back framed correctly. Greece is the target
-    /// because it is the one authority of the five that refuses plain
-    /// http, so it is exactly what this backend exists to reach.
+    /// answer comes back framed correctly. Sectigo is the target
+    /// because it is the primary qualified timestamp authority.
     ///
     /// Run it with:
     ///   cargo test -p refineid-lib-tls --features tls-rustls -- --ignored --nocapture
@@ -583,7 +582,7 @@ mod tests {
         let algorithm = DigestAlgorithm::Sha256;
         let digest = algorithm.digest(b"refineid rustls backend probe");
         let request = refineid_lib_core::sign::timestamp::request(&digest, algorithm, None, true);
-        let url = Uri::parse("https://timestamp.aped.gov.gr/qtss".to_owned())
+        let url = Uri::parse("https://timestamp.sectigo.com/qualified".to_owned())
             .expect("the probe URL parses");
 
         let response = super::post(

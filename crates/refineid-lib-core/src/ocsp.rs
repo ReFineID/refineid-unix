@@ -2067,8 +2067,7 @@ mod tests {
     }
 
     /// Captured from `ocsp.aped.gov.gr` on 2026-08-03: the Hellenic
-    /// Public Administration CA's responder answering about the
-    /// timestamping unit behind `timestamp.aped.gov.gr/qtss`.
+    /// Public Administration CA's responder answering for an OCSP query.
     const APED_RESPONSE: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/data/aped-ocsp-response.der"

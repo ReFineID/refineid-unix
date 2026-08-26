@@ -879,11 +879,11 @@ mod tests {
             "--timestamp",
             "eu-qualified",
         ]))?;
-        check(&a.timestamp_authorities.len(), &2, "two authorities")?;
+        check(&a.timestamp_authorities.len(), &1, "one authority")?;
         check(
             &a.timestamp_authorities[0].as_str(),
-            &"https://timestamp.aped.gov.gr/qtss",
-            "best first",
+            &DEFAULT_TIMESTAMP_AUTHORITY,
+            "sectigo qualified",
         )
     }
 
@@ -901,12 +901,12 @@ mod tests {
             "--timestamp",
             "http://tsa.example/tsa",
             "--timestamp",
-            "https://timestamp.aped.gov.gr/qtss",
+            DEFAULT_TIMESTAMP_AUTHORITY,
         ]))?;
-        // Two named, one custom, and one duplicate of the set.
-        check(&a.timestamp_authorities.len(), &3, "no duplicate")?;
+        // One named, one custom, and one duplicate of the set.
+        check(&a.timestamp_authorities.len(), &2, "no duplicate")?;
         check(
-            &a.timestamp_authorities[2].as_str(),
+            &a.timestamp_authorities[1].as_str(),
             &"http://tsa.example/tsa",
             "own authority kept",
         )

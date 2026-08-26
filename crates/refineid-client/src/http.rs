@@ -57,8 +57,8 @@ impl HttpHelpers {
     /// scheme's default.
     ///
     /// RFC 9110 sec.7.2 wants the authority, not the bare host. A TSA
-    /// answering on `tss.accv.es:8318` is a different virtual host from
-    /// `tss.accv.es`, and omitting the port is how a request reaches
+    /// answering on `tsa.example.org:8318` is a different virtual host from
+    /// `tsa.example.org`, and omitting the port is how a request reaches
     /// the wrong one -- or is refused by a server that checks.
     fn authority(url: &Uri) -> String {
         /// Default port for the only scheme this client dials.

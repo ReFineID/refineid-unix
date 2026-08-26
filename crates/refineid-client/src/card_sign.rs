@@ -83,10 +83,7 @@ const TIMESTAMP_RETRY_MAX_DELAY: core::time::Duration = core::time::Duration::fr
 /// Whoever configures an authority answers for it: every returned
 /// token is cryptographically verified against the request digest and
 /// nonce, and nothing beyond that is checked about the operator.
-pub const EU_QUALIFIED_TIMESTAMP_AUTHORITIES: &[&str] = &[
-    "https://timestamp.aped.gov.gr/qtss",
-    "http://tss.accv.es:8318/tsa",
-];
+pub const EU_QUALIFIED_TIMESTAMP_AUTHORITIES: &[&str] = &[DEFAULT_TIMESTAMP_AUTHORITY];
 
 /// The timestamp authority used when the operator configures none.
 ///
@@ -2401,10 +2398,7 @@ mod tests {
         let digest = [0_u8; 32];
         let mut successes = 0_usize;
         let mut failures = Vec::new();
-        for url in [
-            "https://timestamp.aped.gov.gr/qtss",
-            "http://tss.accv.es:8318/tsa",
-        ] {
+        for url in [DEFAULT_TIMESTAMP_AUTHORITY] {
             let token = match request_token(url, None, false, &digest, DigestAlgorithm::Sha256) {
                 Ok(token) => token,
                 Err(error) => {
