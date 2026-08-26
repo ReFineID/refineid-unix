@@ -17,7 +17,7 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use std::io::{self, Read, Write};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use super::crypto::*;
 use super::envelope::*;
@@ -95,7 +95,10 @@ fn test_cbor_primitives_deterministic() {
     assert_eq!(WireValue::Unsigned(23).encode().expect("ok"), [0x17]);
     assert_eq!(WireValue::Unsigned(24).encode().expect("ok"), [0x18, 0x18]);
     assert_eq!(WireValue::Unsigned(255).encode().expect("ok"), [0x18, 0xFF]);
-    assert_eq!(WireValue::Unsigned(256).encode().expect("ok"), [0x19, 0x01, 0x00]);
+    assert_eq!(
+        WireValue::Unsigned(256).encode().expect("ok"),
+        [0x19, 0x01, 0x00]
+    );
     assert_eq!(WireValue::Negative(-1).encode().expect("ok"), [0x20]);
     assert_eq!(WireValue::Negative(-24).encode().expect("ok"), [0x37]);
     assert_eq!(WireValue::Negative(-25).encode().expect("ok"), [0x38, 0x18]);
@@ -107,7 +110,9 @@ fn test_cbor_primitives_deterministic() {
         [0x64, b'R', b'A', b'P', b'P']
     );
     assert_eq!(
-        WireValue::Bytes(vec![0x00, 0x01, 0xFF]).encode().expect("ok"),
+        WireValue::Bytes(vec![0x00, 0x01, 0xFF])
+            .encode()
+            .expect("ok"),
         [0x43, 0x00, 0x01, 0xFF]
     );
 }
@@ -138,7 +143,9 @@ fn test_stream_rendezvous_encoding() {
     assert_eq!(pairing_rendezvous, dec_pairing);
 
     let token = [0x42u8; 16];
-    let session_rendezvous = StreamRendezvous::Session { rendezvous_token: token };
+    let session_rendezvous = StreamRendezvous::Session {
+        rendezvous_token: token,
+    };
     let enc_session = session_rendezvous.encode().expect("ok");
     let dec_session = StreamRendezvous::decode(&enc_session).expect("ok");
     assert_eq!(session_rendezvous, dec_session);
@@ -209,11 +216,16 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let req_hello_plain = recv_cipher.decrypt(&[], &req_hello_cipher).expect("ok");
         let req_hello_env = RappEnvelope::decode(&req_hello_plain).expect("ok");
         assert_eq!(req_hello_env.msg_type, MessageType::PairingHello);
-        recv_seq.check_and_advance_recv(req_hello_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(req_hello_env.sequence)
+            .expect("ok");
 
         // Send proxy pairing.hello
         let mut proxy_hello_body = BTreeMap::new();
-        proxy_hello_body.insert("display_name".into(), WireValue::Text("iPhone 17 Pro".into()));
+        proxy_hello_body.insert(
+            "display_name".into(),
+            WireValue::Text("iPhone 17 Pro".into()),
+        );
         proxy_hello_body.insert("platform".into(), WireValue::Text("iOS".into()));
         let proxy_hello_env = RappEnvelope::new(
             MessageType::PairingHello,
@@ -250,7 +262,9 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let req_confirm_plain = recv_cipher.decrypt(&[], &req_confirm_cipher).expect("ok");
         let req_confirm_env = RappEnvelope::decode(&req_confirm_plain).expect("ok");
         assert_eq!(req_confirm_env.msg_type, MessageType::PairingConfirm);
-        recv_seq.check_and_advance_recv(req_confirm_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(req_confirm_env.sequence)
+            .expect("ok");
 
         let grants = vec![
             PROFILE_STATUS.into(),
@@ -279,19 +293,21 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
     });
 
     // Run requester pairing on main thread
-    let pair_record = pair_requester_over_stream(
-        &mut requester_pipe,
-        &offer_ctx,
-        "ReFineID Ubuntu",
-        "Linux",
-    )
-    .expect("ok");
+    let pair_record =
+        pair_requester_over_stream(&mut requester_pipe, &offer_ctx, "ReFineID Ubuntu", "Linux")
+            .expect("ok");
 
     let proxy_record = proxy_handle.join().expect("ok");
     assert_eq!(pair_record.pair_id, proxy_record.pair_id);
     assert_eq!(pair_record.rendezvous_token, proxy_record.rendezvous_token);
-    assert_eq!(pair_record.local_static_public, proxy_record.remote_static_public);
-    assert_eq!(pair_record.remote_static_public, proxy_record.local_static_public);
+    assert_eq!(
+        pair_record.local_static_public,
+        proxy_record.remote_static_public
+    );
+    assert_eq!(
+        pair_record.remote_static_public,
+        proxy_record.local_static_public
+    );
     assert_eq!(pair_record.display_name.as_deref(), Some("iPhone 17 Pro"));
     assert_eq!(pair_record.platform.as_deref(), Some("iOS"));
 
@@ -309,10 +325,20 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         // Read preamble
         let preamble_bytes = read_frame(&mut proxy_op_pipe).expect("ok");
         let rendezvous = StreamRendezvous::decode(&preamble_bytes).expect("ok");
-        assert_eq!(rendezvous, StreamRendezvous::Session { rendezvous_token: proxy_record.rendezvous_token });
+        assert_eq!(
+            rendezvous,
+            StreamRendezvous::Session {
+                rendezvous_token: proxy_record.rendezvous_token
+            }
+        );
 
         // Run Noise KK responder
-        let prologue = session_prologue(&proxy_record.pair_id, &proxy_record.grants_hash, TRANSPORT_STREAM).expect("ok");
+        let prologue = session_prologue(
+            &proxy_record.pair_id,
+            &proxy_record.grants_hash,
+            TRANSPORT_STREAM,
+        )
+        .expect("ok");
         let mut hs = NoiseHandshakeState::new(
             NoisePatternKind::Kk,
             SESSION_SUITE,
@@ -342,11 +368,16 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let ready_plain = recv_cipher.decrypt(&[], &ready_cipher).expect("ok");
         let ready_env = RappEnvelope::decode(&ready_plain).expect("ok");
         assert_eq!(ready_env.msg_type, MessageType::SessionReady);
-        recv_seq.check_and_advance_recv(ready_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(ready_env.sequence)
+            .expect("ok");
 
         // Send proxy session.ready
         let mut proxy_ready_body = BTreeMap::new();
-        proxy_ready_body.insert("parameters".into(), ready_env.body.get("parameters").expect("ok").clone());
+        proxy_ready_body.insert(
+            "parameters".into(),
+            ready_env.body.get("parameters").expect("ok").clone(),
+        );
         proxy_ready_body.insert("nonce".into(), WireValue::Bytes(vec![0x77; 32]));
         let proxy_ready_env = RappEnvelope::new(
             MessageType::SessionReady,
@@ -363,7 +394,9 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let req_plain = recv_cipher.decrypt(&[], &req_cipher).expect("ok");
         let req_env = RappEnvelope::decode(&req_plain).expect("ok");
         assert_eq!(req_env.msg_type, MessageType::OperationRequest);
-        recv_seq.check_and_advance_recv(req_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(req_env.sequence)
+            .expect("ok");
 
         let op_id = req_env.body.get("operation_id").expect("ok").clone();
         let req_hash = req_env.body.get("request_hash").expect("ok").clone();
@@ -387,7 +420,9 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let commit_plain = recv_cipher.decrypt(&[], &commit_cipher).expect("ok");
         let commit_env = RappEnvelope::decode(&commit_plain).expect("ok");
         assert_eq!(commit_env.msg_type, MessageType::OperationCommit);
-        recv_seq.check_and_advance_recv(commit_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(commit_env.sequence)
+            .expect("ok");
 
         // Send operation.result (with mock signature)
         let mock_sig = vec![0x30, 0x44, 0x02, 0x20, 0x11, 0x22, 0x33, 0x44];
@@ -416,15 +451,21 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
         let ack_plain = recv_cipher.decrypt(&[], &ack_cipher).expect("ok");
         let ack_env = RappEnvelope::decode(&ack_plain).expect("ok");
         assert_eq!(ack_env.msg_type, MessageType::OperationResultAck);
-        recv_seq.check_and_advance_recv(ack_env.sequence).expect("ok");
+        recv_seq
+            .check_and_advance_recv(ack_env.sequence)
+            .expect("ok");
     });
 
-    let outcome = execute_operation_over_stream(&mut requester_op_pipe, &pair_record, &op).expect("ok");
+    let outcome =
+        execute_operation_over_stream(&mut requester_op_pipe, &pair_record, &op).expect("ok");
     proxy_op_handle.join().expect("ok");
 
     match outcome {
         CardOperationResult::Signature { signature_bytes } => {
-            assert_eq!(signature_bytes, vec![0x30, 0x44, 0x02, 0x20, 0x11, 0x22, 0x33, 0x44]);
+            assert_eq!(
+                signature_bytes,
+                vec![0x30, 0x44, 0x02, 0x20, 0x11, 0x22, 0x33, 0x44]
+            );
         }
         _ => panic!("expected signature result"),
     }

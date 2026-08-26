@@ -128,7 +128,16 @@ mod tests {
 
     #[test]
     fn base64url_round_trip() {
-        let test_cases: &[&[u8]] = &[b"", b"f", b"fo", b"foo", b"foob", b"fooba", b"foobar", &[0xFF, 0x00, 0xAA, 0x55]];
+        let test_cases: &[&[u8]] = &[
+            b"",
+            b"f",
+            b"fo",
+            b"foo",
+            b"foob",
+            b"fooba",
+            b"foobar",
+            &[0xFF, 0x00, 0xAA, 0x55],
+        ];
         for tc in test_cases {
             let enc = encode_url_unpadded(tc);
             assert!(!enc.contains('='));

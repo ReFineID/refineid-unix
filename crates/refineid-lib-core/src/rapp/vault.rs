@@ -51,7 +51,8 @@ impl RappDeviceVault {
     }
 
     fn ensure_dir(&self) -> Result<(), WireError> {
-        fs::create_dir_all(&self.storage_dir).map_err(|_| WireError::InvalidValue { field: "vault_dir" })
+        fs::create_dir_all(&self.storage_dir)
+            .map_err(|_| WireError::InvalidValue { field: "vault_dir" })
     }
 
     fn pair_file_path(&self, pair_id: &[u8; 16]) -> PathBuf {
@@ -64,12 +65,23 @@ impl RappDeviceVault {
         self.ensure_dir()?;
         let encoded = record.encode()?;
         let path = self.pair_file_path(&record.pair_id);
-        let tmp_path = self.storage_dir.join(format!("{}.tmp", crate::hex::Hex::encode(&record.pair_id)));
+        let tmp_path = self
+            .storage_dir
+            .join(format!("{}.tmp", crate::hex::Hex::encode(&record.pair_id)));
 
-        let mut file = File::create(&tmp_path).map_err(|_| WireError::InvalidValue { field: "vault_write" })?;
-        file.write_all(&encoded).map_err(|_| WireError::InvalidValue { field: "vault_write" })?;
-        file.sync_all().map_err(|_| WireError::InvalidValue { field: "vault_write" })?;
-        fs::rename(&tmp_path, &path).map_err(|_| WireError::InvalidValue { field: "vault_write" })?;
+        let mut file = File::create(&tmp_path).map_err(|_| WireError::InvalidValue {
+            field: "vault_write",
+        })?;
+        file.write_all(&encoded)
+            .map_err(|_| WireError::InvalidValue {
+                field: "vault_write",
+            })?;
+        file.sync_all().map_err(|_| WireError::InvalidValue {
+            field: "vault_write",
+        })?;
+        fs::rename(&tmp_path, &path).map_err(|_| WireError::InvalidValue {
+            field: "vault_write",
+        })?;
         Ok(())
     }
 
@@ -79,9 +91,14 @@ impl RappDeviceVault {
         if !path.exists() {
             return Ok(None);
         }
-        let mut file = File::open(&path).map_err(|_| WireError::InvalidValue { field: "vault_read" })?;
+        let mut file = File::open(&path).map_err(|_| WireError::InvalidValue {
+            field: "vault_read",
+        })?;
         let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).map_err(|_| WireError::InvalidValue { field: "vault_read" })?;
+        file.read_to_end(&mut bytes)
+            .map_err(|_| WireError::InvalidValue {
+                field: "vault_read",
+            })?;
         let record = PairRecord::decode(&bytes)?;
         Ok(Some(record))
     }
@@ -91,7 +108,9 @@ impl RappDeviceVault {
         if !self.storage_dir.exists() {
             return Ok(Vec::new());
         }
-        let entries = fs::read_dir(&self.storage_dir).map_err(|_| WireError::InvalidValue { field: "vault_read" })?;
+        let entries = fs::read_dir(&self.storage_dir).map_err(|_| WireError::InvalidValue {
+            field: "vault_read",
+        })?;
         let mut pairs = Vec::new();
 
         for entry in entries.flatten() {
@@ -115,7 +134,9 @@ impl RappDeviceVault {
     pub fn delete_pair(&self, pair_id: &[u8; 16]) -> Result<bool, WireError> {
         let path = self.pair_file_path(pair_id);
         if path.exists() {
-            fs::remove_file(&path).map_err(|_| WireError::InvalidValue { field: "vault_delete" })?;
+            fs::remove_file(&path).map_err(|_| WireError::InvalidValue {
+                field: "vault_delete",
+            })?;
             Ok(true)
         } else {
             Ok(false)
@@ -129,7 +150,11 @@ impl RappDeviceVault {
     }
 
     /// Update cached authentication certificate for a pair record.
-    pub fn update_cached_auth_cert(&self, pair_id: &[u8; 16], cert_der: &[u8]) -> Result<(), WireError> {
+    pub fn update_cached_auth_cert(
+        &self,
+        pair_id: &[u8; 16],
+        cert_der: &[u8],
+    ) -> Result<(), WireError> {
         if let Some(mut pair) = self.load_pair(pair_id)? {
             pair.cached_auth_cert = Some(cert_der.to_vec());
             self.save_pair(&pair)?;

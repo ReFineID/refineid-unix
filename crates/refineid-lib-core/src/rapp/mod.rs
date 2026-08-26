@@ -35,8 +35,8 @@ pub use crypto::{
 };
 pub use envelope::{MessageType, RappEnvelope, SequenceGuard};
 pub use messages::{
-    CardInspection, CardOperation, CardOperationResult, PairRecord, PairingOffer, PROFILE_AUTH,
-    PROFILE_SIGN, PROFILE_STATUS, ResultStatus, StreamRendezvous, TRANSPORT_BLE, TRANSPORT_STREAM,
+    CardInspection, CardOperation, CardOperationResult, PROFILE_AUTH, PROFILE_SIGN, PROFILE_STATUS,
+    PairRecord, PairingOffer, ResultStatus, StreamRendezvous, TRANSPORT_BLE, TRANSPORT_STREAM,
     TransportCandidate,
 };
 pub use session::{

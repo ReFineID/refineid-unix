@@ -122,7 +122,10 @@ impl fmt::Display for WireError {
                 field,
                 expected,
                 got,
-            } => write!(f, "wrong length for {field}: expected {expected}, got {got}"),
+            } => write!(
+                f,
+                "wrong length for {field}: expected {expected}, got {got}"
+            ),
             Self::InvalidValue { field } => write!(f, "invalid value for {field}"),
             Self::CriticalExtensionMissing => write!(f, "critical extension missing"),
         }
@@ -431,7 +434,10 @@ mod tests {
         assert_eq!(WireValue::Unsigned(23).encode().expect("ok"), [0x17]);
         assert_eq!(WireValue::Unsigned(24).encode().expect("ok"), [0x18, 0x18]);
         assert_eq!(WireValue::Unsigned(255).encode().expect("ok"), [0x18, 0xFF]);
-        assert_eq!(WireValue::Unsigned(256).encode().expect("ok"), [0x19, 0x01, 0x00]);
+        assert_eq!(
+            WireValue::Unsigned(256).encode().expect("ok"),
+            [0x19, 0x01, 0x00]
+        );
         assert_eq!(WireValue::Negative(-1).encode().expect("ok"), [0x20]);
         assert_eq!(WireValue::Negative(-24).encode().expect("ok"), [0x37]);
         assert_eq!(WireValue::Negative(-25).encode().expect("ok"), [0x38, 0x18]);
@@ -443,7 +449,9 @@ mod tests {
             [0x64, b'R', b'A', b'P', b'P']
         );
         assert_eq!(
-            WireValue::Bytes(vec![0x00, 0x01, 0xFF]).encode().expect("ok"),
+            WireValue::Bytes(vec![0x00, 0x01, 0xFF])
+                .encode()
+                .expect("ok"),
             [0x43, 0x00, 0x01, 0xFF]
         );
     }

@@ -19,9 +19,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use sha2::{Digest, Sha256};
 
-use crate::base64::{decode_url_unpadded, encode_url_unpadded};
 use super::crypto::{PAIRING_SUITE, WIRE_VERSION};
 use super::wire::{WireError, WireValue, decode_deterministic_cbor};
+use crate::base64::{decode_url_unpadded, encode_url_unpadded};
 
 /// Scheme prefix carried by the scanned QR URI.
 pub const OFFER_URI_PREFIX: &str = "rapp:";
@@ -91,7 +91,10 @@ impl TransportCandidate {
     pub fn to_wire_value(&self) -> WireValue {
         let mut map = BTreeMap::new();
         map.insert("profile".into(), WireValue::Text(self.profile.clone()));
-        map.insert("candidate_id".into(), WireValue::Text(self.candidate_id.clone()));
+        map.insert(
+            "candidate_id".into(),
+            WireValue::Text(self.candidate_id.clone()),
+        );
         map.insert("parameters".into(), WireValue::Map(self.parameters.clone()));
         WireValue::Map(map)
     }
@@ -100,7 +103,11 @@ impl TransportCandidate {
     pub fn from_wire_value(val: &WireValue) -> Result<Self, WireError> {
         let map = match val {
             WireValue::Map(m) => m,
-            _ => return Err(WireError::WrongType { field: "transport_candidate" }),
+            _ => {
+                return Err(WireError::WrongType {
+                    field: "transport_candidate",
+                });
+            }
         };
         let profile = match map.get("profile") {
             Some(WireValue::Text(s)) => s.clone(),
@@ -108,11 +115,19 @@ impl TransportCandidate {
         };
         let candidate_id = match map.get("candidate_id") {
             Some(WireValue::Text(s)) => s.clone(),
-            _ => return Err(WireError::MissingField { field: "candidate_id" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "candidate_id",
+                });
+            }
         };
         let parameters = match map.get("parameters") {
             Some(WireValue::Map(m)) => m.clone(),
-            _ => return Err(WireError::MissingField { field: "parameters" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "parameters",
+                });
+            }
         };
         Ok(Self {
             profile,
@@ -188,9 +203,17 @@ impl PairingOffer {
         );
         map.insert(
             "transports".into(),
-            WireValue::Array(self.transports.iter().map(TransportCandidate::to_wire_value).collect()),
+            WireValue::Array(
+                self.transports
+                    .iter()
+                    .map(TransportCandidate::to_wire_value)
+                    .collect(),
+            ),
         );
-        map.insert("offer_ttl_ms".into(), WireValue::Unsigned(self.offer_ttl_ms));
+        map.insert(
+            "offer_ttl_ms".into(),
+            WireValue::Unsigned(self.offer_ttl_ms),
+        );
         map
     }
 
@@ -215,10 +238,13 @@ impl PairingOffer {
     /// Parse and validate a `rapp:` URI from a scanned QR code.
     pub fn from_uri(uri: &str) -> Result<Self, WireError> {
         if !uri.starts_with(OFFER_URI_PREFIX) {
-            return Err(WireError::InvalidValue { field: "uri_scheme" });
+            return Err(WireError::InvalidValue {
+                field: "uri_scheme",
+            });
         }
         let b64 = &uri[OFFER_URI_PREFIX.len()..];
-        let bytes = decode_url_unpadded(b64).map_err(|_| WireError::InvalidValue { field: "base64" })?;
+        let bytes =
+            decode_url_unpadded(b64).map_err(|_| WireError::InvalidValue { field: "base64" })?;
         if bytes.len() > MAX_OFFER_SIZE {
             return Err(WireError::OversizedPlaintext { got: bytes.len() });
         }
@@ -243,7 +269,11 @@ impl PairingOffer {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "pairing_secret" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "pairing_secret",
+                });
+            }
         };
 
         let suites = match map.remove("suites") {
@@ -282,12 +312,20 @@ impl PairingOffer {
                 }
                 res
             }
-            _ => return Err(WireError::MissingField { field: "transports" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "transports",
+                });
+            }
         };
 
         let offer_ttl_ms = match map.remove("offer_ttl_ms") {
             Some(WireValue::Unsigned(u)) => u,
-            _ => return Err(WireError::MissingField { field: "offer_ttl_ms" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "offer_ttl_ms",
+                });
+            }
         };
 
         Ok(Self {
@@ -336,7 +374,11 @@ impl StreamRendezvous {
         let val = decode_deterministic_cbor(bytes)?;
         let arr = match val {
             WireValue::Array(a) if a.len() == 3 => a,
-            _ => return Err(WireError::WrongType { field: "rendezvous" }),
+            _ => {
+                return Err(WireError::WrongType {
+                    field: "rendezvous",
+                });
+            }
         };
         match (&arr[0], &arr[1], &arr[2]) {
             (WireValue::Text(dom), WireValue::Text(purpose), WireValue::Bytes(token)) => {
@@ -348,12 +390,18 @@ impl StreamRendezvous {
                 } else if purpose == "session" && token.len() == 16 {
                     let mut arr_token = [0u8; 16];
                     arr_token.copy_from_slice(token);
-                    Ok(Self::Session { rendezvous_token: arr_token })
+                    Ok(Self::Session {
+                        rendezvous_token: arr_token,
+                    })
                 } else {
-                    Err(WireError::InvalidValue { field: "rendezvous_purpose" })
+                    Err(WireError::InvalidValue {
+                        field: "rendezvous_purpose",
+                    })
                 }
             }
-            _ => Err(WireError::WrongType { field: "rendezvous" }),
+            _ => Err(WireError::WrongType {
+                field: "rendezvous",
+            }),
         }
     }
 }
@@ -397,19 +445,52 @@ impl PairRecord {
     /// Encode pair record to deterministic CBOR.
     pub fn encode(&self) -> Result<Vec<u8>, WireError> {
         let mut map = BTreeMap::new();
-        map.insert("format_version".into(), WireValue::Unsigned(PAIR_RECORD_FORMAT_VERSION));
+        map.insert(
+            "format_version".into(),
+            WireValue::Unsigned(PAIR_RECORD_FORMAT_VERSION),
+        );
         map.insert("pair_id".into(), WireValue::Bytes(self.pair_id.to_vec()));
-        map.insert("rendezvous_token".into(), WireValue::Bytes(self.rendezvous_token.to_vec()));
+        map.insert(
+            "rendezvous_token".into(),
+            WireValue::Bytes(self.rendezvous_token.to_vec()),
+        );
         map.insert("role".into(), WireValue::Text(self.role.clone()));
-        map.insert("local_static_private".into(), WireValue::Bytes(self.local_static_private.to_vec()));
-        map.insert("local_static_public".into(), WireValue::Bytes(self.local_static_public.to_vec()));
-        map.insert("remote_static_public".into(), WireValue::Bytes(self.remote_static_public.to_vec()));
-        map.insert("grants_hash".into(), WireValue::Bytes(self.grants_hash.to_vec()));
-        map.insert("profiles".into(), WireValue::Array(self.profiles.iter().cloned().map(WireValue::Text).collect()));
-        map.insert("transport_profile".into(), WireValue::Text(self.transport_profile.clone()));
-        map.insert("candidate_id".into(), WireValue::Text(self.candidate_id.clone()));
-        map.insert("transport_parameters".into(), WireValue::Map(self.transport_parameters.clone()));
-        map.insert("created_at_ms".into(), WireValue::Unsigned(self.created_at_ms));
+        map.insert(
+            "local_static_private".into(),
+            WireValue::Bytes(self.local_static_private.to_vec()),
+        );
+        map.insert(
+            "local_static_public".into(),
+            WireValue::Bytes(self.local_static_public.to_vec()),
+        );
+        map.insert(
+            "remote_static_public".into(),
+            WireValue::Bytes(self.remote_static_public.to_vec()),
+        );
+        map.insert(
+            "grants_hash".into(),
+            WireValue::Bytes(self.grants_hash.to_vec()),
+        );
+        map.insert(
+            "profiles".into(),
+            WireValue::Array(self.profiles.iter().cloned().map(WireValue::Text).collect()),
+        );
+        map.insert(
+            "transport_profile".into(),
+            WireValue::Text(self.transport_profile.clone()),
+        );
+        map.insert(
+            "candidate_id".into(),
+            WireValue::Text(self.candidate_id.clone()),
+        );
+        map.insert(
+            "transport_parameters".into(),
+            WireValue::Map(self.transport_parameters.clone()),
+        );
+        map.insert(
+            "created_at_ms".into(),
+            WireValue::Unsigned(self.created_at_ms),
+        );
 
         if let Some(ref name) = self.display_name {
             map.insert("display_name".into(), WireValue::Text(name.clone()));
@@ -429,12 +510,20 @@ impl PairRecord {
         let val = decode_deterministic_cbor(bytes)?;
         let mut map = match val {
             WireValue::Map(m) => m,
-            _ => return Err(WireError::WrongType { field: "pair_record" }),
+            _ => {
+                return Err(WireError::WrongType {
+                    field: "pair_record",
+                });
+            }
         };
 
         let format_version = match map.remove("format_version") {
             Some(WireValue::Unsigned(v)) => v,
-            _ => return Err(WireError::MissingField { field: "format_version" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "format_version",
+                });
+            }
         };
         if format_version != PAIR_RECORD_FORMAT_VERSION {
             return Err(WireError::UnsupportedVersion);
@@ -455,7 +544,11 @@ impl PairRecord {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "rendezvous_token" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "rendezvous_token",
+                });
+            }
         };
 
         let role = match map.remove("role") {
@@ -469,7 +562,11 @@ impl PairRecord {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "local_static_private" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "local_static_private",
+                });
+            }
         };
 
         let local_static_public = match map.remove("local_static_public") {
@@ -478,7 +575,11 @@ impl PairRecord {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "local_static_public" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "local_static_public",
+                });
+            }
         };
 
         let remote_static_public = match map.remove("remote_static_public") {
@@ -487,7 +588,11 @@ impl PairRecord {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "remote_static_public" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "remote_static_public",
+                });
+            }
         };
 
         let grants_hash = match map.remove("grants_hash") {
@@ -496,7 +601,11 @@ impl PairRecord {
                 arr.copy_from_slice(&b);
                 arr
             }
-            _ => return Err(WireError::MissingField { field: "grants_hash" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "grants_hash",
+                });
+            }
         };
 
         let profiles = match map.remove("profiles") {
@@ -515,22 +624,38 @@ impl PairRecord {
 
         let transport_profile = match map.remove("transport_profile") {
             Some(WireValue::Text(s)) => s,
-            _ => return Err(WireError::MissingField { field: "transport_profile" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "transport_profile",
+                });
+            }
         };
 
         let candidate_id = match map.remove("candidate_id") {
             Some(WireValue::Text(s)) => s,
-            _ => return Err(WireError::MissingField { field: "candidate_id" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "candidate_id",
+                });
+            }
         };
 
         let transport_parameters = match map.remove("transport_parameters") {
             Some(WireValue::Map(m)) => m,
-            _ => return Err(WireError::MissingField { field: "transport_parameters" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "transport_parameters",
+                });
+            }
         };
 
         let created_at_ms = match map.remove("created_at_ms") {
             Some(WireValue::Unsigned(u)) => u,
-            _ => return Err(WireError::MissingField { field: "created_at_ms" }),
+            _ => {
+                return Err(WireError::MissingField {
+                    field: "created_at_ms",
+                });
+            }
         };
 
         let display_name = match map.remove("display_name") {
@@ -672,7 +797,10 @@ impl CardOperation {
 
     /// Whether this operation requires holder consent and two-phase commit.
     pub fn is_consequential(&self) -> bool {
-        matches!(self, Self::BrowserAuthenticate { .. } | Self::SignDocument { .. })
+        matches!(
+            self,
+            Self::BrowserAuthenticate { .. } | Self::SignDocument { .. }
+        )
     }
 
     /// Context map presented for holder consent.
@@ -683,7 +811,10 @@ impl CardOperation {
                 map.insert("origin".into(), WireValue::Text(origin.clone()));
             }
             Self::SignDocument { document_name, .. } => {
-                map.insert("document_name".into(), WireValue::Text(document_name.clone()));
+                map.insert(
+                    "document_name".into(),
+                    WireValue::Text(document_name.clone()),
+                );
             }
             _ => {}
         }
@@ -800,7 +931,11 @@ impl CardOperationResult {
             "identity" => {
                 let display_name = match map.remove("display_name") {
                     Some(WireValue::Text(s)) => s,
-                    _ => return Err(WireError::MissingField { field: "display_name" }),
+                    _ => {
+                        return Err(WireError::MissingField {
+                            field: "display_name",
+                        });
+                    }
                 };
                 let person_id = match map.remove("person_id") {
                     Some(WireValue::Text(s)) => s,
@@ -832,7 +967,9 @@ impl CardOperationResult {
                 };
                 Ok(Self::Signature { signature_bytes })
             }
-            _ => Err(WireError::InvalidValue { field: "result_type" }),
+            _ => Err(WireError::InvalidValue {
+                field: "result_type",
+            }),
         }
     }
 }

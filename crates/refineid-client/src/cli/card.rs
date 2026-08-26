@@ -146,48 +146,76 @@ impl CardArgs {
         Self::run_remote_card_check_with_pair(&pair)
     }
 
-    fn run_remote_card_check_with_pair(pair: &refineid_lib_core::rapp::PairRecord) -> std::process::ExitCode {
-    use refineid_lib_core::rapp::{CardOperation, CardOperationResult, execute_operation_with_pair};
-    let dev_name = pair.display_name.as_deref().unwrap_or("Remote Device");
-    let platform = pair.platform.as_deref().unwrap_or("Mobile");
-    println!("Connecting to paired remote reader: {dev_name} ({platform})...");
+    fn run_remote_card_check_with_pair(
+        pair: &refineid_lib_core::rapp::PairRecord,
+    ) -> std::process::ExitCode {
+        use refineid_lib_core::rapp::{
+            CardOperation, CardOperationResult, execute_operation_with_pair,
+        };
+        let dev_name = pair.display_name.as_deref().unwrap_or("Remote Device");
+        let platform = pair.platform.as_deref().unwrap_or("Mobile");
+        println!("Connecting to paired remote reader: {dev_name} ({platform})...");
 
-    let identity_res = execute_operation_with_pair(pair, &CardOperation::ReadIdentity);
-    let inspect_res = execute_operation_with_pair(pair, &CardOperation::InspectCard);
+        let identity_res = execute_operation_with_pair(pair, &CardOperation::ReadIdentity);
+        let inspect_res = execute_operation_with_pair(pair, &CardOperation::InspectCard);
 
-    println!("================================================================================");
-    println!("Remote FINEID Card (via {dev_name} - {platform})");
-    println!("================================================================================");
-    println!("  Pair ID:      {}", refineid_lib_core::hex::Hex::encode(&pair.pair_id));
+        println!(
+            "================================================================================"
+        );
+        println!("Remote FINEID Card (via {dev_name} - {platform})");
+        println!(
+            "================================================================================"
+        );
+        println!(
+            "  Pair ID:      {}",
+            refineid_lib_core::hex::Hex::encode(&pair.pair_id)
+        );
 
-    match identity_res {
-        Ok(CardOperationResult::Identity { display_name, person_id }) => {
-            println!("  Card Holder:  {display_name}");
-            println!("  Personal ID:  {person_id}");
+        match identity_res {
+            Ok(CardOperationResult::Identity {
+                display_name,
+                person_id,
+            }) => {
+                println!("  Card Holder:  {display_name}");
+                println!("  Personal ID:  {person_id}");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                println!("  Identity:     (Read error: {e})");
+            }
         }
-        Ok(_) => {}
-        Err(e) => {
-            println!("  Identity:     (Read error: {e})");
+
+        match inspect_res {
+            Ok(CardOperationResult::Inspection(insp)) => {
+                let p1_att = insp
+                    .pin1_attempts
+                    .map_or_else(|| "Unknown".into(), |a| a.to_string());
+                let p2_att = insp
+                    .pin2_attempts
+                    .map_or_else(|| "Unknown".into(), |a| a.to_string());
+                let puk_att = insp
+                    .puk_attempts
+                    .map_or_else(|| "Unknown".into(), |a| a.to_string());
+                println!(
+                    "  PIN1 Status:  {p1_att} attempts remaining (factory: {})",
+                    insp.pin1_factory
+                );
+                println!(
+                    "  PIN2 Status:  {p2_att} attempts remaining (factory: {})",
+                    insp.pin2_factory
+                );
+                println!("  PUK Status:   {puk_att} attempts remaining");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                println!("  Card Status:  (Inspect error: {e})");
+            }
         }
+        println!(
+            "================================================================================"
+        );
+        std::process::ExitCode::SUCCESS
     }
-
-    match inspect_res {
-        Ok(CardOperationResult::Inspection(insp)) => {
-            let p1_att = insp.pin1_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
-            let p2_att = insp.pin2_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
-            let puk_att = insp.puk_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
-            println!("  PIN1 Status:  {p1_att} attempts remaining (factory: {})", insp.pin1_factory);
-            println!("  PIN2 Status:  {p2_att} attempts remaining (factory: {})", insp.pin2_factory);
-            println!("  PUK Status:   {puk_att} attempts remaining");
-        }
-        Ok(_) => {}
-        Err(e) => {
-            println!("  Card Status:  (Inspect error: {e})");
-        }
-    }
-    println!("================================================================================");
-    std::process::ExitCode::SUCCESS
-}
 
     /// Parse the post-subcommand argv slice.
     ///

@@ -370,8 +370,7 @@ impl NoiseHandshakeState {
         fixed_ephemeral_secret_bytes: Option<[u8; 32]>,
     ) -> Self {
         let local_static_secret = StaticSecret::from(*local_static_secret_bytes);
-        let local_static_public: [u8; 32] =
-            X25519PublicKey::from(&local_static_secret).to_bytes();
+        let local_static_public: [u8; 32] = X25519PublicKey::from(&local_static_secret).to_bytes();
 
         let (local_ephemeral_secret, local_ephemeral_public) =
             if let Some(bytes) = fixed_ephemeral_secret_bytes {
@@ -471,9 +470,7 @@ impl NoiseHandshakeState {
                     }
                 }
                 NoiseToken::StaticKey => {
-                    let cipher = self
-                        .symmetric
-                        .encrypt_and_hash(&self.local_static_public)?;
+                    let cipher = self.symmetric.encrypt_and_hash(&self.local_static_public)?;
                     buffer.extend_from_slice(&cipher);
                 }
                 NoiseToken::EphemeralEphemeral => {
@@ -494,8 +491,7 @@ impl NoiseHandshakeState {
                             .local_ephemeral_secret
                             .as_ref()
                             .expect("local ephemeral");
-                        let remote_pub =
-                            self.remote_static_public.as_ref().expect("remote static");
+                        let remote_pub = self.remote_static_public.as_ref().expect("remote static");
                         Self::diffie_hellman(sec, remote_pub)
                     } else {
                         let remote_pub = self
@@ -518,8 +514,7 @@ impl NoiseHandshakeState {
                             .local_ephemeral_secret
                             .as_ref()
                             .expect("local ephemeral");
-                        let remote_pub =
-                            self.remote_static_public.as_ref().expect("remote static");
+                        let remote_pub = self.remote_static_public.as_ref().expect("remote static");
                         Self::diffie_hellman(sec, remote_pub)
                     };
                     self.symmetric.mix_key(&ss);
@@ -605,8 +600,7 @@ impl NoiseHandshakeState {
                             .local_ephemeral_secret
                             .as_ref()
                             .expect("local ephemeral");
-                        let remote_pub =
-                            self.remote_static_public.as_ref().expect("remote static");
+                        let remote_pub = self.remote_static_public.as_ref().expect("remote static");
                         Self::diffie_hellman(sec, remote_pub)
                     } else {
                         let remote_pub = self
@@ -629,8 +623,7 @@ impl NoiseHandshakeState {
                             .local_ephemeral_secret
                             .as_ref()
                             .expect("local ephemeral");
-                        let remote_pub =
-                            self.remote_static_public.as_ref().expect("remote static");
+                        let remote_pub = self.remote_static_public.as_ref().expect("remote static");
                         Self::diffie_hellman(sec, remote_pub)
                     };
                     self.symmetric.mix_key(&ss);
@@ -719,7 +712,10 @@ pub fn derive_grants_hash(profiles: &[String]) -> Result<[u8; 32], WireError> {
 }
 
 /// Compute pairing prologue for Noise XXpsk3 handshake.
-pub fn pairing_prologue(offer_hash: &[u8; 32], transport_profile: &str) -> Result<Vec<u8>, WireError> {
+pub fn pairing_prologue(
+    offer_hash: &[u8; 32],
+    transport_profile: &str,
+) -> Result<Vec<u8>, WireError> {
     let val = WireValue::Array(vec![
         WireValue::Text(PAIRING_PROLOGUE_DOMAIN.into()),
         WireValue::Array(vec![

@@ -30,13 +30,17 @@ pub fn write_frame<W: Write>(writer: &mut W, payload: &[u8]) -> Result<(), WireE
     let len = payload.len() as u16;
     writer
         .write_all(&len.to_be_bytes())
-        .map_err(|_| WireError::InvalidValue { field: "transport_write" })?;
+        .map_err(|_| WireError::InvalidValue {
+            field: "transport_write",
+        })?;
     writer
         .write_all(payload)
-        .map_err(|_| WireError::InvalidValue { field: "transport_write" })?;
-    writer
-        .flush()
-        .map_err(|_| WireError::InvalidValue { field: "transport_flush" })?;
+        .map_err(|_| WireError::InvalidValue {
+            field: "transport_write",
+        })?;
+    writer.flush().map_err(|_| WireError::InvalidValue {
+        field: "transport_flush",
+    })?;
     Ok(())
 }
 
@@ -48,7 +52,9 @@ pub fn read_frame<R: Read>(reader: &mut R) -> Result<Vec<u8>, WireError> {
         .map_err(|_| WireError::Truncated)?;
     let len = u16::from_be_bytes(len_bytes) as usize;
     if len == 0 || len > MAX_STREAM_FRAME {
-        return Err(WireError::InvalidValue { field: "frame_length" });
+        return Err(WireError::InvalidValue {
+            field: "frame_length",
+        });
     }
     let mut buffer = vec![0u8; len];
     reader

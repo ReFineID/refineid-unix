@@ -153,8 +153,14 @@ impl RappEnvelope {
                 WireValue::Unsigned(self.version.1),
             ]),
         );
-        map.insert("type".into(), WireValue::Text(self.msg_type.as_str().into()));
-        map.insert("session_id".into(), WireValue::Bytes(self.session_id.to_vec()));
+        map.insert(
+            "type".into(),
+            WireValue::Text(self.msg_type.as_str().into()),
+        );
+        map.insert(
+            "session_id".into(),
+            WireValue::Bytes(self.session_id.to_vec()),
+        );
         map.insert("sequence".into(), WireValue::Unsigned(self.sequence));
         map.insert("body".into(), WireValue::Map(self.body.clone()));
 
@@ -205,9 +211,9 @@ impl RappEnvelope {
             _ => return Err(WireError::WrongType { field: "type" }),
         };
 
-        let session_val = map
-            .remove("session_id")
-            .ok_or(WireError::MissingField { field: "session_id" })?;
+        let session_val = map.remove("session_id").ok_or(WireError::MissingField {
+            field: "session_id",
+        })?;
         let session_id = match session_val {
             WireValue::Bytes(b) if b.len() == 16 => {
                 let mut id = [0u8; 16];
@@ -221,7 +227,11 @@ impl RappEnvelope {
                     got: b.len(),
                 });
             }
-            _ => return Err(WireError::WrongType { field: "session_id" }),
+            _ => {
+                return Err(WireError::WrongType {
+                    field: "session_id",
+                });
+            }
         };
 
         let seq_val = map
@@ -257,7 +267,11 @@ impl RappEnvelope {
 
         let extensions = match map.remove("extensions") {
             Some(WireValue::Map(m)) => m,
-            Some(_) => return Err(WireError::WrongType { field: "extensions" }),
+            Some(_) => {
+                return Err(WireError::WrongType {
+                    field: "extensions",
+                });
+            }
             None => BTreeMap::new(),
         };
 

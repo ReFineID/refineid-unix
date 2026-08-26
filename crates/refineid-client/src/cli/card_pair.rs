@@ -136,24 +136,23 @@ impl PairArgs {
             transport_parameters: candidate.parameters,
         };
 
-        let mut pair_record = match pair_requester_over_stream(
-            &mut stream,
-            &offer_ctx,
-            "ReFineID Ubuntu",
-            "Linux",
-        ) {
-            Ok(rec) => rec,
-            Err(e) => {
-                eprintln!("Pairing failed: {e}");
-                return ExitCode::FAILURE;
-            }
-        };
+        let mut pair_record =
+            match pair_requester_over_stream(&mut stream, &offer_ctx, "ReFineID Ubuntu", "Linux") {
+                Ok(rec) => rec,
+                Err(e) => {
+                    eprintln!("Pairing failed: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
 
         let dev_name = pair_record
             .display_name
             .clone()
             .unwrap_or_else(|| "Remote Device".into());
-        let dev_plat = pair_record.platform.clone().unwrap_or_else(|| "Mobile".into());
+        let dev_plat = pair_record
+            .platform
+            .clone()
+            .unwrap_or_else(|| "Mobile".into());
         println!("Pairing established with {dev_name} ({dev_plat})!");
 
         // 3. Cache initial authentication certificate
@@ -338,7 +337,8 @@ fn render_terminal_qr(text: &str) {
         let mut row = String::new();
         for x in (-border)..(size + border) {
             let top = x >= 0 && x < size && y >= 0 && y < size && qr.get_module(x, y);
-            let bottom = x >= 0 && x < size && (y + 1) >= 0 && (y + 1) < size && qr.get_module(x, y + 1);
+            let bottom =
+                x >= 0 && x < size && (y + 1) >= 0 && (y + 1) < size && qr.get_module(x, y + 1);
 
             match (top, bottom) {
                 (true, true) => row.push(' '),

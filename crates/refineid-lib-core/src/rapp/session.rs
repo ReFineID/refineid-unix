@@ -424,7 +424,8 @@ pub fn execute_operation_over_stream<S: Read + Write>(
         Some(WireValue::Text(s)) => s.as_str(),
         _ => return Err(WireError::MissingField { field: "status" }),
     };
-    let status = ResultStatus::from_str(status_str).ok_or(WireError::InvalidValue { field: "status" })?;
+    let status =
+        ResultStatus::from_str(status_str).ok_or(WireError::InvalidValue { field: "status" })?;
     if status != ResultStatus::Completed {
         return Err(WireError::InvalidValue {
             field: "operation_rejected",
@@ -488,7 +489,9 @@ pub fn execute_operation_with_pair(
             let _ = stream.set_write_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
             return execute_operation_over_stream(&mut stream, pair, operation);
         } else {
-            last_err = WireError::InvalidValue { field: "connect_failed" };
+            last_err = WireError::InvalidValue {
+                field: "connect_failed",
+            };
         }
     }
     Err(last_err)
