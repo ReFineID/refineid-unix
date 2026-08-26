@@ -208,17 +208,29 @@ impl ObjectKind {
     ];
 }
 
-/// Result of an attribute lookup: either a concrete DER / scalar
-/// value, or a marker that the attribute exists but is sensitive
-/// (the private key's [`CKA_VALUE`]) and must be reported as
-/// unavailable rather than disclosed.
-#[derive(Debug, Clone)]
-pub enum AttrValue {
-    /// The attribute's encoded bytes (a scalar in native-endian
-    /// [`CkUlong`] form, a single [`CkBbool`] octet, or DER).
-    Available(Vec<u8>),
+/// Result of an attribute lookup: either a borrowed slice from certificate
+/// or token metadata, an inlined scalar byte buffer, or a marker that the
+/// attribute exists but is sensitive (the private key's [`CKA_VALUE`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttrValue<'a> {
+    /// Borrowed slice from certificate / key DER or token metadata.
+    Borrowed(&'a [u8]),
+    /// Inlined scalar bytes (for [`CkUlong`], [`CkBbool`]) with zero heap allocations.
+    Inline([u8; 8], usize),
     /// The attribute exists but its value is sensitive and withheld.
     Sensitive,
+}
+
+impl AttrValue<'_> {
+    /// Borrow the underlying attribute bytes if available.
+    #[must_use]
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Borrowed(slice) => Some(slice),
+            Self::Inline(buf, len) => Some(&buf[..*len]),
+            Self::Sensitive => None,
+        }
+    }
 }
 
 /// The token objects, parsed from the card's authentication
@@ -227,6 +239,8 @@ pub enum AttrValue {
 pub struct TokenObjects {
     /// The parsed leaf authentication certificate.
     auth_cert: OwnedCert,
+    /// Pre-encoded serial number DER INTEGER for the authentication certificate.
+    auth_cert_serial_der: Vec<u8>,
     /// Key type: [`CKK_RSA`] or [`CKK_EC`], from the certificate SPKI.
     key_type: CkUlong,
     /// Sign mechanism this card profile uses, derived from
@@ -257,26 +271,35 @@ pub struct TokenObjects {
     ec_point: Option<Vec<u8>>,
     /// Intermediate and root CA certificates as strongly-typed [`OwnedCert`]s.
     ca_certs: Vec<OwnedCert>,
+    /// Precomputed labels for CA certificates.
+    ca_labels: Vec<Vec<u8>>,
+    /// Precomputed IDs (SPKI SHA-1) for CA certificates.
+    ca_ids: Vec<Vec<u8>>,
+    /// Precomputed serial DER INTEGERs for CA certificates.
+    ca_serials: Vec<Vec<u8>>,
 }
 
 fn load_static_ca_cert(cert_der: &'static [u8]) -> Result<OwnedCert, CkRv> {
     OwnedCert::from_der(cert_der).map_err(|_err| CKR_DEVICE_ERROR)
 }
 
-/// Encode a [`CkUlong`] attribute value in native-endian form, the
-/// in-memory layout NSS uses for `CK_ULONG` templates and result
-/// buffers.
+/// Encode a [`CkUlong`] attribute value into an inline zero-allocation buffer.
 #[expect(
     clippy::host_endian_bytes,
     reason = "PKCS#11 CK_ULONG attribute values live in caller memory as a native-endian machine word; NSS reads them back as CK_ULONG, so the on-wire bytes must match the host byte order, not a fixed endianness"
 )]
-fn ulong_attr(value: CkUlong) -> Vec<u8> {
-    value.to_ne_bytes().to_vec()
+fn ulong_attr(value: CkUlong) -> AttrValue<'static> {
+    let bytes = value.to_ne_bytes();
+    let mut buf = [0u8; 8];
+    buf[..bytes.len()].copy_from_slice(&bytes);
+    AttrValue::Inline(buf, bytes.len())
 }
 
-/// Encode a [`CkBbool`] attribute value ([`CK_TRUE`] / [`CK_FALSE`]).
-fn bool_attr(value: CkBbool) -> Vec<u8> {
-    vec![value]
+/// Encode a [`CkBbool`] attribute value into an inline zero-allocation buffer.
+fn bool_attr(value: CkBbool) -> AttrValue<'static> {
+    let mut buf = [0u8; 8];
+    buf[0] = value;
+    AttrValue::Inline(buf, 1)
 }
 
 /// Append a DER length for `len` to `out` (X.690 s8.1.3). Handles the
@@ -311,11 +334,8 @@ fn der_integer(value: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Treat an empty DER span as an absent attribute. A parse that
-/// produced no bytes must surface as
-/// [`crate::ck::CKR_ATTRIBUTE_TYPE_INVALID`], not as a zero-length
-/// DN / serial value that NSS would treat as real data.
-fn non_empty(bytes: Vec<u8>) -> Option<Vec<u8>> {
+/// Treat an empty slice as an absent attribute.
+fn non_empty(bytes: &[u8]) -> Option<&[u8]> {
     if bytes.is_empty() { None } else { Some(bytes) }
 }
 
@@ -348,8 +368,30 @@ impl TokenObjects {
             || DEFAULT_LABEL.as_bytes().to_vec(),
             |cn| cn.as_str().as_bytes().to_vec(),
         );
+        let auth_cert_serial_der = der_integer(view.serial_der);
+        let ca_certs = vec![
+            load_static_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
+            load_static_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
+            load_static_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
+            load_static_ca_cert(DVV_CA_ORG_G4R_DER)?,
+            load_static_ca_cert(DVV_CA_ROOT_ECC_DER)?,
+            load_static_ca_cert(DVV_CA_ROOT_RSA_DER)?,
+        ];
+        let mut ca_labels = Vec::with_capacity(ca_certs.len());
+        let mut ca_ids = Vec::with_capacity(ca_certs.len());
+        let mut ca_serials = Vec::with_capacity(ca_certs.len());
+        for ca in &ca_certs {
+            let v = ca.view();
+            ca_labels.push(v.subject.common_name().map_or_else(
+                || b"CA Certificate".to_vec(),
+                |cn| cn.as_str().as_bytes().to_vec(),
+            ));
+            ca_ids.push(Sha1::of(v.spki.as_der()).as_bytes().to_vec());
+            ca_serials.push(der_integer(v.serial_der));
+        }
         Ok(Self {
             auth_cert,
+            auth_cert_serial_der,
             key_type,
             mechanism,
             label,
@@ -360,14 +402,10 @@ impl TokenObjects {
             public_exponent,
             ec_params,
             ec_point,
-            ca_certs: vec![
-                load_static_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
-                load_static_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
-                load_static_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
-                load_static_ca_cert(DVV_CA_ORG_G4R_DER)?,
-                load_static_ca_cert(DVV_CA_ROOT_ECC_DER)?,
-                load_static_ca_cert(DVV_CA_ROOT_RSA_DER)?,
-            ],
+            ca_certs,
+            ca_labels,
+            ca_ids,
+            ca_serials,
         })
     }
 
@@ -437,7 +475,7 @@ impl TokenObjects {
     /// [`crate::ck::CKR_ATTRIBUTE_TYPE_INVALID`]); returns
     /// [`AttrValue::Sensitive`] for the private key's [`CKA_VALUE`].
     #[must_use]
-    pub(crate) fn attribute(&self, kind: ObjectKind, attr: CkAttributeType) -> Option<AttrValue> {
+    pub(crate) fn attribute(&self, kind: ObjectKind, attr: CkAttributeType) -> Option<AttrValue<'_>> {
         match kind {
             ObjectKind::Certificate => self.certificate_attribute(attr),
             ObjectKind::PublicKey => self.public_key_attribute(attr),
@@ -452,30 +490,27 @@ impl TokenObjects {
     }
 
     /// Attribute lookup for an embedded or on-card CA certificate object.
-    fn ca_attribute(&self, index: usize, attr: CkAttributeType) -> Option<AttrValue> {
+    fn ca_attribute(&self, index: usize, attr: CkAttributeType) -> Option<AttrValue<'_>> {
         let ca = self.ca_certs.get(index)?;
         let view = ca.view();
-        let label = view.subject.common_name().map_or_else(
-            || b"CA Certificate".to_vec(),
-            |cn| cn.as_str().as_bytes().to_vec(),
-        );
-        let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
-        let bytes = match attr {
-            CKA_CLASS => ulong_attr(CKO_CERTIFICATE),
-            CKA_CERTIFICATE_TYPE => ulong_attr(CKC_X_509),
-            CKA_CERTIFICATE_CATEGORY => ulong_attr(CK_CERTIFICATE_CATEGORY_AUTHORITY),
-            CKA_TOKEN => bool_attr(CK_TRUE),
-            CKA_PRIVATE => bool_attr(CK_FALSE),
-            CKA_TRUSTED => bool_attr(CK_TRUE),
-            CKA_LABEL => label,
-            CKA_ID => id,
-            CKA_VALUE => ca.as_der().to_vec(),
-            CKA_ISSUER => non_empty(view.issuer.as_der().to_vec())?,
-            CKA_SUBJECT => non_empty(view.subject.as_der().to_vec())?,
-            CKA_SERIAL_NUMBER => non_empty(der_integer(view.serial_der))?,
-            _ => return None,
-        };
-        Some(AttrValue::Available(bytes))
+        let label = self.ca_labels.get(index)?;
+        let id = self.ca_ids.get(index)?;
+        let serial = self.ca_serials.get(index)?;
+        match attr {
+            CKA_CLASS => Some(ulong_attr(CKO_CERTIFICATE)),
+            CKA_CERTIFICATE_TYPE => Some(ulong_attr(CKC_X_509)),
+            CKA_CERTIFICATE_CATEGORY => Some(ulong_attr(CK_CERTIFICATE_CATEGORY_AUTHORITY)),
+            CKA_TOKEN => Some(bool_attr(CK_TRUE)),
+            CKA_PRIVATE => Some(bool_attr(CK_FALSE)),
+            CKA_TRUSTED => Some(bool_attr(CK_TRUE)),
+            CKA_LABEL => Some(AttrValue::Borrowed(label)),
+            CKA_ID => Some(AttrValue::Borrowed(id)),
+            CKA_VALUE => Some(AttrValue::Borrowed(ca.as_der())),
+            CKA_ISSUER => non_empty(view.issuer.as_der()).map(AttrValue::Borrowed),
+            CKA_SUBJECT => non_empty(view.subject.as_der()).map(AttrValue::Borrowed),
+            CKA_SERIAL_NUMBER => non_empty(serial).map(AttrValue::Borrowed),
+            _ => None,
+        }
     }
 
     /// Attribute lookup for the certificate object.
@@ -486,24 +521,23 @@ impl TokenObjects {
     /// personalised by DVV, not generated through this module) and a
     /// concrete answer keeps `pkcs11-tool --list-objects` free of
     /// attribute-read failure noise.
-    fn certificate_attribute(&self, attr: CkAttributeType) -> Option<AttrValue> {
+    fn certificate_attribute(&self, attr: CkAttributeType) -> Option<AttrValue<'_>> {
         let view = self.auth_cert.view();
-        let bytes = match attr {
-            CKA_CLASS => ulong_attr(CKO_CERTIFICATE),
-            CKA_CERTIFICATE_TYPE => ulong_attr(CKC_X_509),
-            CKA_CERTIFICATE_CATEGORY => ulong_attr(CK_CERTIFICATE_CATEGORY_TOKEN_USER),
-            CKA_KEY_TYPE => ulong_attr(self.key_type),
-            CKA_TOKEN => bool_attr(CK_TRUE),
-            CKA_PRIVATE | CKA_TRUSTED | CKA_LOCAL => bool_attr(CK_FALSE),
-            CKA_LABEL => self.label.clone(),
-            CKA_ID => self.id.clone(),
-            CKA_VALUE => self.auth_cert.as_der().to_vec(),
-            CKA_ISSUER => non_empty(view.issuer.as_der().to_vec())?,
-            CKA_SUBJECT => non_empty(view.subject.as_der().to_vec())?,
-            CKA_SERIAL_NUMBER => non_empty(der_integer(view.serial_der))?,
-            _ => return None,
-        };
-        Some(AttrValue::Available(bytes))
+        match attr {
+            CKA_CLASS => Some(ulong_attr(CKO_CERTIFICATE)),
+            CKA_CERTIFICATE_TYPE => Some(ulong_attr(CKC_X_509)),
+            CKA_CERTIFICATE_CATEGORY => Some(ulong_attr(CK_CERTIFICATE_CATEGORY_TOKEN_USER)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
+            CKA_TOKEN => Some(bool_attr(CK_TRUE)),
+            CKA_PRIVATE | CKA_TRUSTED | CKA_LOCAL => Some(bool_attr(CK_FALSE)),
+            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
+            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_VALUE => Some(AttrValue::Borrowed(self.auth_cert.as_der())),
+            CKA_ISSUER => non_empty(view.issuer.as_der()).map(AttrValue::Borrowed),
+            CKA_SUBJECT => non_empty(view.subject.as_der()).map(AttrValue::Borrowed),
+            CKA_SERIAL_NUMBER => non_empty(&self.auth_cert_serial_der).map(AttrValue::Borrowed),
+            _ => None,
+        }
     }
 
     /// Attribute lookup for the public key object, served from the
@@ -511,23 +545,22 @@ impl TokenObjects {
     /// purpose per the certificate); the other usage flags are
     /// `CK_FALSE` because this token performs none of those
     /// operations.
-    fn public_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue> {
-        let bytes = match attr {
-            CKA_CLASS => ulong_attr(CKO_PUBLIC_KEY),
-            CKA_KEY_TYPE => ulong_attr(self.key_type),
-            CKA_TOKEN | CKA_VERIFY => bool_attr(CK_TRUE),
-            CKA_PRIVATE | CKA_ENCRYPT | CKA_WRAP | CKA_DERIVE => bool_attr(CK_FALSE),
-            CKA_LABEL => self.label.clone(),
-            CKA_ID => self.id.clone(),
-            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der().to_vec())?,
-            CKA_MODULUS => self.modulus.clone()?,
-            CKA_MODULUS_BITS => ulong_attr(self.modulus_bits?),
-            CKA_PUBLIC_EXPONENT => self.public_exponent.clone()?,
-            CKA_EC_PARAMS => self.ec_params.clone()?,
-            CKA_EC_POINT => self.ec_point.clone()?,
-            _ => return None,
-        };
-        Some(AttrValue::Available(bytes))
+    fn public_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue<'_>> {
+        match attr {
+            CKA_CLASS => Some(ulong_attr(CKO_PUBLIC_KEY)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
+            CKA_TOKEN | CKA_VERIFY => Some(bool_attr(CK_TRUE)),
+            CKA_PRIVATE | CKA_ENCRYPT | CKA_WRAP | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
+            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
+            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed),
+            CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
+            CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
+            CKA_PUBLIC_EXPONENT => self.public_exponent.as_deref().map(AttrValue::Borrowed),
+            CKA_EC_PARAMS => self.ec_params.as_deref().map(AttrValue::Borrowed),
+            CKA_EC_POINT => self.ec_point.as_deref().map(AttrValue::Borrowed),
+            _ => None,
+        }
     }
 
     /// Attribute lookup for the private key object.
@@ -538,33 +571,50 @@ impl TokenObjects {
     /// the card -- it is what a security review greps for, and an
     /// absent attribute never matches a find template asking for
     /// `CKA_EXTRACTABLE = FALSE`.
-    fn private_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue> {
-        let bytes = match attr {
-            CKA_CLASS => ulong_attr(CKO_PRIVATE_KEY),
-            CKA_KEY_TYPE => ulong_attr(self.key_type),
+    fn private_key_attribute(&self, attr: CkAttributeType) -> Option<AttrValue<'_>> {
+        match attr {
+            CKA_CLASS => Some(ulong_attr(CKO_PRIVATE_KEY)),
+            CKA_KEY_TYPE => Some(ulong_attr(self.key_type)),
             CKA_TOKEN
             | CKA_PRIVATE
             | CKA_SIGN
             | CKA_SENSITIVE
             | CKA_NEVER_EXTRACTABLE
-            | CKA_ALWAYS_SENSITIVE => bool_attr(CK_TRUE),
+            | CKA_ALWAYS_SENSITIVE => Some(bool_attr(CK_TRUE)),
             CKA_ALWAYS_AUTHENTICATE
             | CKA_EXTRACTABLE
             | CKA_SIGN_RECOVER
             | CKA_UNWRAP
-            | CKA_DERIVE => bool_attr(CK_FALSE),
-            CKA_LABEL => self.label.clone(),
-            CKA_ID => self.id.clone(),
-            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der().to_vec())?,
-            CKA_VALUE => return Some(AttrValue::Sensitive),
-            CKA_MODULUS => self.modulus.clone()?,
-            CKA_MODULUS_BITS => ulong_attr(self.modulus_bits?),
-            CKA_PUBLIC_EXPONENT => self.public_exponent.clone()?,
-            CKA_EC_PARAMS => self.ec_params.clone()?,
-            CKA_EC_POINT => self.ec_point.clone()?,
-            _ => return None,
-        };
-        Some(AttrValue::Available(bytes))
+            | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
+            CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
+            CKA_ID => Some(AttrValue::Borrowed(&self.id)),
+            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed),
+            CKA_VALUE => Some(AttrValue::Sensitive),
+            CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
+            CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
+            CKA_PUBLIC_EXPONENT => self.public_exponent.as_deref().map(AttrValue::Borrowed),
+            CKA_EC_PARAMS => self.ec_params.as_deref().map(AttrValue::Borrowed),
+            CKA_EC_POINT => self.ec_point.as_deref().map(AttrValue::Borrowed),
+            _ => None,
+        }
+    }
+
+    /// Add an on-card CA certificate to the token cache.
+    pub(crate) fn prepend_ca_cert(&mut self, cert: OwnedCert) {
+        if self.ca_certs.iter().any(|c| c.as_der() == cert.as_der()) {
+            return;
+        }
+        let v = cert.view();
+        let label = v.subject.common_name().map_or_else(
+            || b"CA Certificate".to_vec(),
+            |cn| cn.as_str().as_bytes().to_vec(),
+        );
+        let id = Sha1::of(v.spki.as_der()).as_bytes().to_vec();
+        let serial = der_integer(v.serial_der);
+        self.ca_certs.insert(0, cert);
+        self.ca_labels.insert(0, label);
+        self.ca_ids.insert(0, id);
+        self.ca_serials.insert(0, serial);
     }
 
     /// Software signature verification against the cached
@@ -652,8 +702,8 @@ impl TokenObjects {
         template
             .iter()
             .all(|(attr, wanted)| match self.attribute(kind, *attr) {
-                Some(AttrValue::Available(have)) => have == *wanted,
-                _ => false,
+                Some(val) => val.as_bytes() == Some(wanted.as_slice()),
+                None => false,
             })
     }
 }
@@ -715,9 +765,7 @@ pub(super) fn build_token_objects(reader_name: &str) -> Result<TokenObjects, CkR
     }
     // Prepend on-card CA certificates so live card certs take precedence
     for ca in on_card_cas.into_iter().rev() {
-        if !objects.ca_certs.iter().any(|c| c.as_der() == ca.as_der()) {
-            objects.ca_certs.insert(0, ca);
-        }
+        objects.prepend_ca_cert(ca);
     }
     Ok(objects)
 }
@@ -1087,8 +1135,8 @@ mod tests {
 
     #[test]
     fn empty_der_span_is_an_absent_attribute() {
-        assert_eq!(super::non_empty(Vec::new()), None);
-        assert_eq!(super::non_empty(vec![0x30]), Some(vec![0x30]));
+        assert_eq!(super::non_empty(&[]), None);
+        assert_eq!(super::non_empty(&[0x30]), Some(&[0x30][..]));
     }
 
     #[test]

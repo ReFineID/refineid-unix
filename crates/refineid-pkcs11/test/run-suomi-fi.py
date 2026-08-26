@@ -107,6 +107,20 @@ for i in range(25):
         url = cmd("WebDriver:GetCurrentURL", {}, timeout=2)[3].get("value", "")
         title = cmd("WebDriver:GetTitle", {})[3].get("value", "")
         print(f"    [{i+1:02d}s] URL: {url} | Title: {title}", flush=True)
+        if "hst-prompt" in url:
+            try:
+                cmd("WebDriver:ExecuteScript", {
+                    "script": "let btn = document.querySelector('button[type=\"submit\"], input[type=\"submit\"], a.button, button'); if (btn) btn.click();",
+                    "args": []
+                }, timeout=2)
+                time.sleep(1)
+                subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter
+                time.sleep(1)
+                subprocess.run(["ydotool", "type", "--", "456789"])
+                time.sleep(0.2)
+                subprocess.run(["ydotool", "key", "28:1", "28:0"]) # Enter
+            except Exception:
+                pass
         if ("suomi.fi" in url and not any(k in url for k in ["tunnist", "etusivu", "kortti", "hstidp"])) or any(k in url for k in ["asiointitili", "omat-tiedot", "viestit", "valtuudet", "kansalaiselle"]):
             print("\n=======================================================", flush=True)
             print("🎉🎉🎉 SUCCESSFUL SUOMI.FI SMARTCARD LOGIN IN FIREFOX! 🎉🎉🎉", flush=True)

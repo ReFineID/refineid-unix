@@ -1104,7 +1104,7 @@ unsafe fn fill_attributes(
 /// # Safety
 /// `entry` must be a valid, writable [`CkAttribute`]; when its
 /// `p_value` is non-NULL it must hold `ul_value_len` writable bytes.
-unsafe fn fill_one_attribute(entry: CkAttributePtr, value: Option<AttrValue>) -> CkRv {
+unsafe fn fill_one_attribute(entry: CkAttributePtr, value: Option<AttrValue<'_>>) -> CkRv {
     // SAFETY: entry is a valid, readable CK_ATTRIBUTE.
     let current = unsafe { entry.read() };
     match value {
@@ -1122,7 +1122,8 @@ unsafe fn fill_one_attribute(entry: CkAttributePtr, value: Option<AttrValue>) ->
             }
             CKR_ATTRIBUTE_SENSITIVE
         }
-        Some(AttrValue::Available(bytes)) => {
+        Some(val) => {
+            let bytes = val.as_bytes().unwrap_or(&[]);
             if current.p_value.is_null() {
                 // SAFETY: entry is writable.
                 unsafe {
