@@ -47,16 +47,16 @@ use refineid_lib_pcsc::PcscBackend;
 #[cfg(feature = "pin-change")]
 use crate::ck::CKR_PIN_LEN_RANGE;
 use crate::ck::{
-    CK_CERTIFICATE_CATEGORY_TOKEN_USER, CK_FALSE, CK_TRUE, CKA_ALWAYS_AUTHENTICATE,
-    CKA_ALWAYS_SENSITIVE, CKA_CERTIFICATE_CATEGORY, CKA_CERTIFICATE_TYPE, CKA_CLASS, CKA_DERIVE,
-    CKA_EC_PARAMS, CKA_EC_POINT, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_ID, CKA_ISSUER, CKA_KEY_TYPE,
-    CKA_LABEL, CKA_LOCAL, CKA_MODULUS, CKA_MODULUS_BITS, CKA_NEVER_EXTRACTABLE, CKA_PRIVATE,
-    CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SERIAL_NUMBER, CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT,
-    CKA_TOKEN, CKA_TRUSTED, CKA_UNWRAP, CKA_VALUE, CKA_VERIFY, CKA_WRAP, CKC_X_509, CKK_EC,
-    CKK_RSA, CKO_CERTIFICATE, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_DATA_INVALID,
-    CKR_DATA_LEN_RANGE, CKR_DEVICE_ERROR, CKR_OK, CKR_PIN_INCORRECT, CKR_PIN_LOCKED,
-    CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE, CKR_USER_NOT_LOGGED_IN, CkAttributeType,
-    CkBbool, CkObjectHandle, CkRv, CkUlong,
+    CK_CERTIFICATE_CATEGORY_AUTHORITY, CK_CERTIFICATE_CATEGORY_TOKEN_USER, CK_FALSE, CK_TRUE,
+    CKA_ALWAYS_AUTHENTICATE, CKA_ALWAYS_SENSITIVE, CKA_CERTIFICATE_CATEGORY, CKA_CERTIFICATE_TYPE,
+    CKA_CLASS, CKA_DERIVE, CKA_EC_PARAMS, CKA_EC_POINT, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_ID,
+    CKA_ISSUER, CKA_KEY_TYPE, CKA_LABEL, CKA_LOCAL, CKA_MODULUS, CKA_MODULUS_BITS,
+    CKA_NEVER_EXTRACTABLE, CKA_PRIVATE, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_SERIAL_NUMBER,
+    CKA_SIGN, CKA_SIGN_RECOVER, CKA_SUBJECT, CKA_TOKEN, CKA_TRUSTED, CKA_UNWRAP, CKA_VALUE,
+    CKA_VERIFY, CKA_WRAP, CKC_X_509, CKK_EC, CKK_RSA, CKO_CERTIFICATE, CKO_PRIVATE_KEY,
+    CKO_PUBLIC_KEY, CKR_DATA_INVALID, CKR_DATA_LEN_RANGE, CKR_DEVICE_ERROR, CKR_OK,
+    CKR_PIN_INCORRECT, CKR_PIN_LOCKED, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKR_USER_NOT_LOGGED_IN, CkAttributeType, CkBbool, CkObjectHandle, CkRv, CkUlong,
 };
 use crate::sign::{Mechanism, sign_with_card};
 
@@ -70,6 +70,24 @@ pub const OBJ_PRIVATE_KEY: CkObjectHandle = 2;
 /// Object handle for the authentication public key, derived from the
 /// certificate SPKI. Shares [`CKA_ID`] with the other two objects.
 pub const OBJ_PUBLIC_KEY: CkObjectHandle = 3;
+/// Object handles for the embedded DVV intermediate and root CA certificates.
+pub const OBJ_CA_CITIZEN_G4E: CkObjectHandle = 4;
+pub const OBJ_CA_CITIZEN_G4R: CkObjectHandle = 5;
+pub const OBJ_CA_CITIZEN_G3: CkObjectHandle = 6;
+pub const OBJ_CA_ORG_G4R: CkObjectHandle = 7;
+pub const OBJ_CA_ROOT_ECC: CkObjectHandle = 8;
+pub const OBJ_CA_ROOT_RSA: CkObjectHandle = 9;
+
+const DVV_CA_CITIZEN_G4E_DER: &[u8] =
+    include_bytes!("../ca-certs/fineid-intermediate-01-citizen-g4e.der");
+const DVV_CA_CITIZEN_G4R_DER: &[u8] =
+    include_bytes!("../ca-certs/fineid-intermediate-02-citizen-g4r.der");
+const DVV_CA_CITIZEN_G3_DER: &[u8] =
+    include_bytes!("../ca-certs/fineid-intermediate-00-citizen-g3.der");
+const DVV_CA_ORG_G4R_DER: &[u8] =
+    include_bytes!("../ca-certs/fineid-intermediate-03-organisation-g4r.der");
+const DVV_CA_ROOT_ECC_DER: &[u8] = include_bytes!("../ca-certs/dvv-gov-root-ca-g3-ecc.der");
+const DVV_CA_ROOT_RSA_DER: &[u8] = include_bytes!("../ca-certs/dvv-gov-root-ca-g3-rsa.der");
 
 /// Fixed human-readable token / object label used when the card's
 /// certificate carries no usable common name. NSS shows it in the
@@ -127,6 +145,18 @@ pub enum ObjectKind {
     PublicKey,
     /// The authentication private key ([`CKO_PRIVATE_KEY`]).
     PrivateKey,
+    /// Embedded CA: DVV Citizen Certificates - G4E
+    CaCitizenG4e,
+    /// Embedded CA: DVV Citizen Certificates - G4R
+    CaCitizenG4r,
+    /// Embedded CA: VRK Gov. CA for Citizen Certificates - G3
+    CaCitizenG3,
+    /// Embedded CA: DVV Organisational Certificates - G4R
+    CaOrgG4r,
+    /// Embedded CA: DVV Gov. Root CA - G3 ECC
+    CaRootEcc,
+    /// Embedded CA: DVV Gov. Root CA - G3 RSA
+    CaRootRsa,
 }
 
 impl ObjectKind {
@@ -138,6 +168,12 @@ impl ObjectKind {
             OBJ_CERTIFICATE => Some(Self::Certificate),
             OBJ_PRIVATE_KEY => Some(Self::PrivateKey),
             OBJ_PUBLIC_KEY => Some(Self::PublicKey),
+            OBJ_CA_CITIZEN_G4E => Some(Self::CaCitizenG4e),
+            OBJ_CA_CITIZEN_G4R => Some(Self::CaCitizenG4r),
+            OBJ_CA_CITIZEN_G3 => Some(Self::CaCitizenG3),
+            OBJ_CA_ORG_G4R => Some(Self::CaOrgG4r),
+            OBJ_CA_ROOT_ECC => Some(Self::CaRootEcc),
+            OBJ_CA_ROOT_RSA => Some(Self::CaRootRsa),
             _ => None,
         }
     }
@@ -149,8 +185,27 @@ impl ObjectKind {
             Self::Certificate => OBJ_CERTIFICATE,
             Self::PrivateKey => OBJ_PRIVATE_KEY,
             Self::PublicKey => OBJ_PUBLIC_KEY,
+            Self::CaCitizenG4e => OBJ_CA_CITIZEN_G4E,
+            Self::CaCitizenG4r => OBJ_CA_CITIZEN_G4R,
+            Self::CaCitizenG3 => OBJ_CA_CITIZEN_G3,
+            Self::CaOrgG4r => OBJ_CA_ORG_G4R,
+            Self::CaRootEcc => OBJ_CA_ROOT_ECC,
+            Self::CaRootRsa => OBJ_CA_ROOT_RSA,
         }
     }
+
+    /// All object kinds exposed by the token.
+    pub(crate) const ALL: [Self; 9] = [
+        Self::Certificate,
+        Self::PublicKey,
+        Self::PrivateKey,
+        Self::CaCitizenG4e,
+        Self::CaCitizenG4r,
+        Self::CaCitizenG3,
+        Self::CaOrgG4r,
+        Self::CaRootEcc,
+        Self::CaRootRsa,
+    ];
 }
 
 /// Result of an attribute lookup: either a concrete DER / scalar
@@ -206,6 +261,37 @@ pub struct TokenObjects {
     /// [`CKA_EC_POINT`] for an EC key: DER OCTET STRING of the SEC1
     /// point.
     ec_point: Option<Vec<u8>>,
+    /// Embedded DVV intermediate and root CA certificate objects.
+    ca_certs: Vec<CaCertData>,
+}
+
+/// Parsed data for an embedded CA certificate object.
+#[derive(Debug, Clone)]
+struct CaCertData {
+    label: Vec<u8>,
+    id: Vec<u8>,
+    cert_der: Vec<u8>,
+    issuer_der: Vec<u8>,
+    subject_der: Vec<u8>,
+    serial_der: Vec<u8>,
+}
+
+fn load_ca_cert(cert_der: &'static [u8]) -> Result<CaCertData, CkRv> {
+    let parsed = OwnedCert::from_der(cert_der).map_err(|_err| CKR_DEVICE_ERROR)?;
+    let view = parsed.view();
+    let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
+    let label = view.subject.common_name().map_or_else(
+        || b"CA Certificate".to_vec(),
+        |cn| cn.as_str().as_bytes().to_vec(),
+    );
+    Ok(CaCertData {
+        label,
+        id,
+        cert_der: cert_der.to_vec(),
+        issuer_der: view.issuer.as_der().to_vec(),
+        subject_der: view.subject.as_der().to_vec(),
+        serial_der: der_integer(view.serial_der),
+    })
 }
 
 /// Encode a [`CkUlong`] attribute value in native-endian form, the
@@ -307,6 +393,14 @@ impl TokenObjects {
             public_exponent: None,
             ec_params: None,
             ec_point: None,
+            ca_certs: vec![
+                load_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
+                load_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
+                load_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
+                load_ca_cert(DVV_CA_ORG_G4R_DER)?,
+                load_ca_cert(DVV_CA_ROOT_ECC_DER)?,
+                load_ca_cert(DVV_CA_ROOT_RSA_DER)?,
+            ],
         };
         token.fill_key_material(&view.spki)?;
         Ok(token)
@@ -370,7 +464,34 @@ impl TokenObjects {
             ObjectKind::Certificate => self.certificate_attribute(attr),
             ObjectKind::PublicKey => self.public_key_attribute(attr),
             ObjectKind::PrivateKey => self.private_key_attribute(attr),
+            ObjectKind::CaCitizenG4e => self.ca_attribute(0, attr),
+            ObjectKind::CaCitizenG4r => self.ca_attribute(1, attr),
+            ObjectKind::CaCitizenG3 => self.ca_attribute(2, attr),
+            ObjectKind::CaOrgG4r => self.ca_attribute(3, attr),
+            ObjectKind::CaRootEcc => self.ca_attribute(4, attr),
+            ObjectKind::CaRootRsa => self.ca_attribute(5, attr),
         }
+    }
+
+    /// Attribute lookup for an embedded CA certificate object.
+    fn ca_attribute(&self, index: usize, attr: CkAttributeType) -> Option<AttrValue> {
+        let ca = self.ca_certs.get(index)?;
+        let bytes = match attr {
+            CKA_CLASS => ulong_attr(CKO_CERTIFICATE),
+            CKA_CERTIFICATE_TYPE => ulong_attr(CKC_X_509),
+            CKA_CERTIFICATE_CATEGORY => ulong_attr(CK_CERTIFICATE_CATEGORY_AUTHORITY),
+            CKA_TOKEN => bool_attr(CK_TRUE),
+            CKA_PRIVATE => bool_attr(CK_FALSE),
+            CKA_TRUSTED => bool_attr(CK_TRUE),
+            CKA_LABEL => ca.label.clone(),
+            CKA_ID => ca.id.clone(),
+            CKA_VALUE => ca.cert_der.clone(),
+            CKA_ISSUER => non_empty(ca.issuer_der.clone())?,
+            CKA_SUBJECT => non_empty(ca.subject_der.clone())?,
+            CKA_SERIAL_NUMBER => non_empty(ca.serial_der.clone())?,
+            _ => return None,
+        };
+        Some(AttrValue::Available(bytes))
     }
 
     /// Attribute lookup for the certificate object.
@@ -700,11 +821,7 @@ pub(super) fn card_sign(
     }
 }
 
-fn remote_card_sign(
-    hex_id: &str,
-    mechanism: Mechanism,
-    input: &[u8],
-) -> Result<Vec<u8>, CkRv> {
+fn remote_card_sign(hex_id: &str, mechanism: Mechanism, input: &[u8]) -> Result<Vec<u8>, CkRv> {
     let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
     let pairs = vault.active_pairs().map_err(|_| CKR_DEVICE_ERROR)?;
     let pair = pairs
@@ -725,9 +842,7 @@ fn remote_card_sign(
             };
             ("eccP384", "ecdsaSha384", digest_bytes)
         }
-        Mechanism::RsaPkcs => {
-            ("rsa3072", "rsaPkcs1Sha256", input.to_vec())
-        }
+        Mechanism::RsaPkcs => ("rsa3072", "rsaPkcs1Sha256", input.to_vec()),
     };
 
     let op = refineid_lib_core::rapp::CardOperation::BrowserAuthenticate {

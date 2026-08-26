@@ -650,6 +650,9 @@ pub const CKC_X_509: CkUlong = 0x0000_0000;
 /// 24: 0 = unspecified, 1 = token user, 2 = authority, 3 = other
 /// entity). The FINEID auth certificate belongs to the cardholder.
 pub const CK_CERTIFICATE_CATEGORY_TOKEN_USER: CkUlong = 0x0000_0001;
+/// `CK_CERTIFICATE_CATEGORY` value `authority` (v2.40 s4.6.2 table 24).
+/// Used for CA certificates exposed by the token to build the certificate chain.
+pub const CK_CERTIFICATE_CATEGORY_AUTHORITY: CkUlong = 0x0000_0002;
 /// `CKK_RSA`: key type for an RSA key.
 pub const CKK_RSA: CkUlong = 0x0000_0000;
 /// `CKK_EC`: key type for an elliptic-curve key (aka `CKK_ECDSA`).

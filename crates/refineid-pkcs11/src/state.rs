@@ -349,7 +349,10 @@ impl ModuleState {
         let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
         if let Ok(pairs) = vault.active_pairs() {
             for pair in pairs {
-                let name = format!("rapp:{}", refineid_lib_core::hex::Hex::encode(&pair.pair_id));
+                let name = format!(
+                    "rapp:{}",
+                    refineid_lib_core::hex::Hex::encode(&pair.pair_id)
+                );
                 let card_present = true;
                 if let Some(pos) = self.slots.iter().position(|s| s.reader_name == name) {
                     if let Some(slot) = self.slots.get_mut(pos) {
@@ -572,7 +575,9 @@ impl ModuleState {
                 let res = refineid_lib_core::rapp::execute_operation_with_pair(&pair, &op)
                     .map_err(|_| CKR_DEVICE_ERROR)?;
                 match res {
-                    refineid_lib_core::rapp::CardOperationResult::Certificate { der_bytes, .. } => {
+                    refineid_lib_core::rapp::CardOperationResult::Certificate {
+                        der_bytes, ..
+                    } => {
                         let _ = vault.update_cached_auth_cert(&pair.pair_id, &der_bytes);
                         der_bytes
                     }

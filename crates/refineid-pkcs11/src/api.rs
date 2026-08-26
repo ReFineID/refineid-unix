@@ -784,8 +784,7 @@ unsafe extern "C" fn c_login(
     // SAFETY: caller guarantees pin_ptr points to `pin_len` bytes;
     // the bytes are copied straight into a zeroizing PinBytes and
     // never logged (PIN secrecy rule).
-    let caller_bytes =
-        unsafe { core::slice::from_raw_parts(pin_ptr, length) }.to_vec();
+    let caller_bytes = unsafe { core::slice::from_raw_parts(pin_ptr, length) }.to_vec();
 
     // When the `test-pin-env` feature is active and the environment
     // variable `REFINEID_TEST_PIN1` is set, override the caller-supplied
@@ -965,15 +964,11 @@ fn matching_handles(
     token: &TokenObjects,
     template: &[(CkMechanismType, Vec<u8>)],
 ) -> Vec<CkObjectHandle> {
-    [
-        ObjectKind::Certificate,
-        ObjectKind::PublicKey,
-        ObjectKind::PrivateKey,
-    ]
-    .into_iter()
-    .filter(|kind| token.matches(*kind, template))
-    .map(ObjectKind::handle)
-    .collect()
+    ObjectKind::ALL
+        .into_iter()
+        .filter(|kind| token.matches(*kind, template))
+        .map(ObjectKind::handle)
+        .collect()
 }
 
 /// `C_FindObjects`: return the next batch of matching handles (v2.40
