@@ -31,22 +31,21 @@ The macOS/iPadOS app lives in
 
 ## Install
 
-On NixOS, see [doc/install-nixos.md](doc/install-nixos.md) -- one
-option in `configuration.nix` installs everything, including automatic
-Firefox card-login integration.
+See [INSTALL](INSTALL) for full installation and uninstallation instructions.
 
-On other distributions: install `pcsc-lite` (with the CCID driver),
-`fontconfig`, `pkg-config`, and a Rust toolchain (1.95 or newer), then
+- **Debian / Ubuntu (.deb package)**:
+  ```sh
+  script/package-deb.sh
+  sudo apt install ./target/deb/refineid_*.deb
+  ```
 
-```sh
-cargo build --release --workspace
-```
+- **NixOS**:
+  See [doc/install-nixos.md](doc/install-nixos.md) for declarative system installation.
 
-Binaries land in `target/release/`. Register
-`librefineid_pkcs11.so` with p11-kit (see
-[doc/install-nixos.md](doc/install-nixos.md) for the module-file
-shape) or directly in Firefox via
-Settings > Privacy & Security > Security Devices.
+- **Generic source build**:
+  ```sh
+  cargo build --release --workspace
+  ```
 
 ## Workspace layout
 

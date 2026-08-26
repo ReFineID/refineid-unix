@@ -2042,8 +2042,8 @@ mod tests {
     fn timestamp_credentials_are_encoded_and_redacted() -> TestResult {
         let user = "test-user";
         let pass = "test-pass";
-        let credentials = TimestampCredentials::new(user.to_owned(), pass.to_owned())
-            .map_err(str::to_owned)?;
+        let credentials =
+            TimestampCredentials::new(user.to_owned(), pass.to_owned()).map_err(str::to_owned)?;
         let expected_header = format!(
             "Basic {}",
             refineid_lib_core::base64::encode(format!("{user}:{pass}").as_bytes())

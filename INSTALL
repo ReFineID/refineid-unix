@@ -1,0 +1,148 @@
+# Installing ReFineID
+
+ReFineID provides the `refineid` CLI, the desktop GUI (`refineid-gui`),
+and the PKCS#11 module (`librefineid_pkcs11.so`) for Finnish identity cards.
+
+---
+
+## 1. Debian & Ubuntu (.deb package)
+
+The recommended way to install ReFineID on Ubuntu / Debian is to build
+and install the standalone `.deb` package using the single packaging script.
+
+### 1a. Install Build Dependencies
+```sh
+sudo apt update
+sudo apt install -y \
+  build-essential \
+  pkg-config \
+  cargo \
+  rustc \
+  libpcsclite-dev \
+  libgtk-3-dev \
+  libfontconfig1-dev \
+  libxkbcommon-dev \
+  libx11-dev \
+  libxcursor-dev \
+  libxi-dev \
+  libxrandr-dev \
+  pcscd \
+  libccid \
+  p11-kit
+```
+
+### 1b. Build the Package
+Run the single build script:
+```sh
+script/package-deb.sh
+```
+
+The script compiles the release binaries and builds a `.deb` archive in
+`target/deb/refineid_<version>_<arch>.deb`.
+
+### 1c. Install the Package
+```sh
+sudo apt install ./target/deb/refineid_*.deb
+```
+
+*What the package configures automatically:*
+- Installs `refineid` and `refineid-gui` to `/usr/bin/`
+- Installs the PKCS#11 module to `/usr/lib/librefineid_pkcs11.so`
+- Registers the desktop application entry and icon in `/usr/share/`
+- Configures `p11-kit` (`/usr/share/p11-kit/modules/refineid.module`) so
+  system crypto consumers (GnuTLS, OpenSSL pkcs11-provider, OpenSSH)
+  discover the card
+- Configures Firefox enterprise policies (`/etc/firefox/policies/policies.json`)
+  for automatic card login
+- Enables and activates the smart-card daemon socket (`pcscd.socket`)
+
+### 1d. Uninstalling
+To cleanly remove the package and all its integrations:
+```sh
+sudo apt remove refineid
+```
+
+To also remove configuration files:
+```sh
+sudo apt purge refineid
+```
+
+---
+
+## 2. NixOS
+
+See [doc/install-nixos.md](doc/install-nixos.md) for full instructions.
+Adding `programs.refineid.enable = true;` configures everything system-wide.
+
+---
+
+## 3. Generic Linux (Source Build)
+
+### 3a. Build from Source
+Ensure Rust 1.95+ and development libraries for `pcsc-lite`, `gtk3`, and
+`fontconfig` are installed, then run:
+
+```sh
+cargo build --release --workspace
+```
+
+Binaries will be placed in `target/release/`:
+- `target/release/refineid`
+- `target/release/refineid-gui`
+- `target/release/librefineid_pkcs11.so`
+
+### 3b. Manual System Installation
+```sh
+# Binaries
+sudo install -m 755 target/release/refineid /usr/local/bin/refineid
+sudo install -m 755 target/release/refineid-gui /usr/local/bin/refineid-gui
+
+# PKCS#11 shared module
+sudo install -m 755 target/release/librefineid_pkcs11.so /usr/local/lib/librefineid_pkcs11.so
+sudo ldconfig
+
+# Desktop entry & icon
+sudo install -d /usr/local/share/applications /usr/local/share/icons/hicolor/scalable/apps
+sudo install -m 644 crates/refineid-gui/assets/app-icon.svg /usr/local/share/icons/hicolor/scalable/apps/refineid.svg
+sudo install -m 644 -T <(cat << 'DESKTOPEOF'
+[Desktop Entry]
+Type=Application
+Name=ReFineID
+GenericName=Identity card tool
+Comment=Finnish identity card: PIN management, portrait and signature, document signing
+Exec=/usr/local/bin/refineid-gui
+Icon=refineid
+Terminal=false
+Categories=Utility;Security;
+Keywords=FINEID;smartcard;PIN;identity;signing;
+DESKTOPEOF
+) /usr/local/share/applications/refineid.desktop
+
+# p11-kit registration
+sudo install -d /etc/pkcs11/modules
+sudo tee /etc/pkcs11/modules/refineid.module > /dev/null << 'P11EOF'
+module: /usr/local/lib/librefineid_pkcs11.so
+trust-policy: no
+critical: no
+P11EOF
+
+# Enable smart-card daemon
+sudo systemctl enable --now pcscd.socket
+```
+
+---
+
+## 4. Verifying the Installation
+
+1. **Reader and Card Status**:
+   ```sh
+   pcsc_scan
+   ```
+2. **Read Card Metadata**:
+   ```sh
+   refineid card
+   ```
+3. **Check PKCS#11 Module Discovery**:
+   ```sh
+   p11-kit list-modules
+   ```
