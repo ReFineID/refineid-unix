@@ -260,11 +260,6 @@ impl CaObject {
     }
 
     #[must_use]
-    pub(crate) const fn cert(&self) -> &OwnedCert {
-        &self.cert
-    }
-
-    #[must_use]
     pub(crate) fn id_bytes(&self) -> &[u8] {
         self.id.as_bytes()
     }
@@ -1058,7 +1053,7 @@ const fn pin1_verify_guard(status: PinStatus) -> Result<(), CkRv> {
     }
 }
 
-fn live_token_serial(card: &mut refineid_lib_pcsc::PcscCard) -> Result<TokenSerial, CkRv> {
+fn live_token_serial(card: &mut PcscCard) -> Result<TokenSerial, CkRv> {
     card.read_token_info()
         .map_err(|_read_err| CKR_DEVICE_ERROR)?
         .serial_number_hex

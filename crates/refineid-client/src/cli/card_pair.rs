@@ -19,7 +19,6 @@ use alloc::vec::Vec;
 use std::net::{IpAddr, Ipv4Addr, TcpListener, UdpSocket};
 use std::process::ExitCode;
 
-use qrcodegen::{QrCode, QrCodeEcc};
 use refineid_lib_core::hex::Hex;
 use refineid_lib_core::rapp::{
     CardOperation, CardOperationResult, PairOfferContext, PairRecord, PairingOffer,
@@ -78,8 +77,6 @@ impl PairArgs {
     /// Execute the pairing ceremony.
     #[must_use]
     pub fn run(self) -> ExitCode {
-        println!("ReFineID: Pairing with mobile device (iPhone / Android)...");
-
         // 1. Detect local IP addresses for candidate endpoints
         let local_ips = detect_local_ips();
         let endpoints: Vec<String> = local_ips
@@ -92,24 +89,34 @@ impl PairArgs {
             return ExitCode::FAILURE;
         }
 
+        let code = generate_random_pairing_code();
         let candidate = TransportCandidate::new_stream("stream-0", &endpoints);
-        let offer = PairingOffer::generate(vec![candidate.clone()]);
-        let uri = match offer.to_uri() {
-            Ok(u) => u,
-            Err(e) => {
-                eprintln!("Error generating pairing URI: {e}");
-                return ExitCode::FAILURE;
-            }
-        };
+        let offer = PairingOffer::generate_numeric(code, vec![candidate.clone()]);
 
-        // 2. Render terminal QR code
+        let code_str = format!("{code:06}");
+        let d = code_str.as_bytes();
+        let formatted_code = format!(
+            "{} {} {}   {} {} {}",
+            char::from(d[0]),
+            char::from(d[1]),
+            char::from(d[2]),
+            char::from(d[3]),
+            char::from(d[4]),
+            char::from(d[5]),
+        );
+
+        println!("======================================================");
+        println!("              ReFineID Device Pairing                 ");
+        println!("======================================================");
         println!();
-        render_terminal_qr(&uri);
+        println!("  PAIRING CODE:  {formatted_code}");
         println!();
-        println!("Scan this QR code with the ReFineID app on your phone (iOS / Android).");
-        println!("Offer URI: {uri}");
+        println!("  1. Open ReFineID on your phone (iPhone / Android)");
+        println!("  2. Select \"Pair New Device\"");
+        println!("  3. Enter the 6-digit code shown above");
         println!();
-        println!("Listening for proxy connection on port {}...", self.port);
+        println!("Listening for connection on port {}...", self.port);
+        println!("======================================================");
 
         let listener = match TcpListener::bind(("0.0.0.0", self.port)) {
             Ok(l) => l,
@@ -137,7 +144,7 @@ impl PairArgs {
         };
 
         let mut pair_record =
-            match pair_requester_over_stream(&mut stream, &offer_ctx, "ReFineID Ubuntu", "Linux") {
+            match pair_requester_over_stream(&mut stream, &offer_ctx, "ReFineID Linux", "Linux") {
                 Ok(rec) => rec,
                 Err(e) => {
                     eprintln!("Pairing failed: {e}");
@@ -324,29 +331,10 @@ fn detect_local_ips() -> Vec<IpAddr> {
     ips
 }
 
-fn render_terminal_qr(text: &str) {
-    let Ok(qr) = QrCode::encode_text(text, QrCodeEcc::Medium) else {
-        println!("(QR code generation failed, see URI string)");
-        return;
-    };
-
-    let size = qr.size();
-    let border = 2;
-
-    for y in ((-border)..(size + border)).step_by(2) {
-        let mut row = String::new();
-        for x in (-border)..(size + border) {
-            let top = x >= 0 && x < size && y >= 0 && y < size && qr.get_module(x, y);
-            let bottom =
-                x >= 0 && x < size && (y + 1) >= 0 && (y + 1) < size && qr.get_module(x, y + 1);
-
-            match (top, bottom) {
-                (true, true) => row.push(' '),
-                (true, false) => row.push('▄'),
-                (false, true) => row.push('▀'),
-                (false, false) => row.push('█'),
-            }
-        }
-        println!("{row}");
-    }
+/// Generate a cryptographically random 6-digit numeric pairing code (100000..999999).
+fn generate_random_pairing_code() -> u32 {
+    let mut bytes = [0u8; 4];
+    refineid_lib_core::rng::fill(&mut bytes).expect("CSPRNG");
+    let val = u32::from_ne_bytes(bytes);
+    100_000 + (val % 900_000)
 }

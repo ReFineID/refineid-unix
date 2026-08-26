@@ -176,6 +176,28 @@ impl PairingOffer {
         }
     }
 
+    /// Generate a pairing offer authenticated by a 6-digit numeric pairing code.
+    pub fn generate_numeric(code: u32, transports: Vec<TransportCandidate>) -> Self {
+        let code_str = format!("{code:06}");
+        let secret_tag = format!("refineid-rapp-pairing-secret-v1:{code_str}");
+        let pairing_secret = *crate::crypto::digest::Sha256::of(secret_tag.as_bytes()).as_bytes();
+        let offer_tag = format!("refineid-rapp-offer-id-v1:{code_str}");
+        let offer_id = *crate::crypto::digest::Sha256::of(offer_tag.as_bytes()).as_bytes();
+
+        Self {
+            offer_id,
+            pairing_secret,
+            suites: vec![PAIRING_SUITE.into()],
+            profiles: vec![
+                PROFILE_STATUS.into(),
+                PROFILE_AUTH.into(),
+                PROFILE_SIGN.into(),
+            ],
+            transports,
+            offer_ttl_ms: MAX_OFFER_TTL_MS,
+        }
+    }
+
     fn as_wire_map(&self, include_secret: bool) -> BTreeMap<String, WireValue> {
         let mut map = BTreeMap::new();
         map.insert("scheme".into(), WireValue::Text(OFFER_SCHEME_NAME.into()));
