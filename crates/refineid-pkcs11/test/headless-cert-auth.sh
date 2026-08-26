@@ -75,7 +75,7 @@ HOST="${HOST:-card.refineid.fi}"
 PORT="${PORT:-443}"
 REQUEST_PATH="${REQUEST_PATH:-/}"
 NICKNAME="${NICKNAME:-ReFineID-FINEID-auth}"
-WORK="${WORKDIR:-$(mktemp -d -t refineid-headless-cert-auth)}"
+WORK="${WORKDIR:-$(mktemp -d -t refineid-headless-cert-auth.XXXXXX)}"
 
 # Platform-portable cdylib extension + builtin-CA module location.
 case "$(uname -s)" in

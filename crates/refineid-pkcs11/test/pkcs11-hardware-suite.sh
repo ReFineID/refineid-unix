@@ -78,7 +78,7 @@ command -v pkcs11-tool >/dev/null || { echo "ERROR: pkcs11-tool missing (opensc)
 command -v openssl >/dev/null || { echo "ERROR: openssl missing" >&2; exit 3; }
 command -v python3 >/dev/null || { echo "ERROR: python3 missing (ECDSA DER wrap)" >&2; exit 3; }
 
-WORK="$(mktemp -d -t refineid-pkcs11-suite)"
+WORK="$(mktemp -d -t refineid-pkcs11-suite.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 PASS=0
@@ -131,7 +131,7 @@ parse_pin_line() {
 
 read_pin_status() {
     local raw
-    raw=$("$CLI" card --offline 2>&1)
+    raw=$("$CLI" card --offline --no-can 2>&1)
     CURRENT_PIN1="$(parse_pin_line "$raw" 'PIN1 (auth):')"
     CURRENT_PIN2="$(parse_pin_line "$raw" 'PIN2 (qualified-sig):')"
 }
@@ -203,7 +203,7 @@ echo "refineid pkcs11 hardware suite message - $(date)" > "$MSG"
 # Phase 1: read-only, no PIN
 # ---------------------------------------------------------------
 
-run "1.  refineid card --offline"                 "$CLI" card --offline
+run "1.  refineid card --offline"                 "$CLI" card --offline --no-can
 run "2.  pkcs11-tool --list-slots"                pkcs11-tool --module "$MOD" --list-slots
 run "3.  pkcs11-tool --list-mechanisms"           pkcs11-tool --module "$MOD" --list-mechanisms
 run "4.  pkcs11-tool --list-objects (no login)"   pkcs11-tool --module "$MOD" --list-objects
