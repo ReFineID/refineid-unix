@@ -42,7 +42,7 @@ use refineid_lib_core::pin_cache::PinSafetyCache;
 use refineid_lib_core::pin_retry_risk::{PinRetryRisk, pin1_status_permits_reusable_cache};
 use refineid_lib_core::pkcs15::{CertSlot, Pkcs15Ops as _};
 use refineid_lib_core::x509::{EcCurve, OwnedCert, PublicKeyAlgorithm, extract_rsa_public_key};
-use refineid_lib_pcsc::PcscBackend;
+use refineid_lib_pcsc::{PcscBackend, PcscCard};
 
 #[cfg(feature = "pin-change")]
 use crate::ck::CKR_PIN_LEN_RANGE;
@@ -719,6 +719,22 @@ impl TokenObjects {
     }
 }
 
+/// Attempt to read and parse an optional CA certificate from a card slot.
+///
+/// Returns `Some(OwnedCert)` when the slot is populated on the card profile
+/// and contains a valid DER X.509 certificate; returns `None` when the slot
+/// is absent on older card generations or unreadable.
+fn read_optional_ca_cert(card: &mut PcscCard, slot: CertSlot) -> Option<OwnedCert> {
+    let raw = match card.read_certificate(slot) {
+        Ok(raw) => raw,
+        Err(_read_err) => return None,
+    };
+    match OwnedCert::from_der(raw.into_bytes()) {
+        Ok(cert) => Some(cert),
+        Err(_parse_err) => None,
+    }
+}
+
 /// Build the token objects for `reader_name`: open the card once,
 /// read EF.TokenInfo (chip serial, card label) and the
 /// authentication certificate via the PKCS#15 chain, drop the
@@ -756,20 +772,14 @@ pub(super) fn build_token_objects(reader_name: &str) -> Result<TokenObjects, CkR
         .map_err(|_read_err| CKR_DEVICE_ERROR)?;
 
     // Read on-card CA certificates when present on this card generation
-    let mut on_card_cas = Vec::new();
-    for slot in [
+    let on_card_cas: Vec<OwnedCert> = [
         CertSlot::IssuingCaEcc,
         CertSlot::RootCa,
         CertSlot::SignatureAlt,
-    ] {
-        if let Ok(c) = card
-            .read_certificate(slot)
-            .map_err(|_| ())
-            .and_then(|der| OwnedCert::from_der(der.into_bytes()).map_err(|_| ()))
-        {
-            on_card_cas.push(c);
-        }
-    }
+    ]
+    .into_iter()
+    .filter_map(|slot| read_optional_ca_cert(&mut card, slot))
+    .collect();
     drop(card);
 
     let mut objects = TokenObjects::from_cert_der(cert.into_bytes())?;
