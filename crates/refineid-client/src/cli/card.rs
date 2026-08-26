@@ -61,6 +61,8 @@ pub struct CardArgs {
     /// ICAO PKD input file (`--icao-pkd PATH`); either a signed
     /// `*.ml` DER or an LDIF carrying per-state Master Lists.
     pub icao_pkd: Option<PathBuf>,
+    /// Force checking paired remote card reader (`--remote`).
+    pub remote: bool,
 }
 
 impl CardArgs {
@@ -74,7 +76,13 @@ impl CardArgs {
             crl_file,
             save_cert_dir,
             icao_pkd,
+            remote,
         } = self;
+
+        if remote {
+            return Self::run_remote_card_check();
+        }
+
         // Resolve the typed CardCanArg into Option<Can>:
         // Explicit wins, Skip = None, Default falls back to a
         // TTY prompt (interactive use) or None (piped / non-TTY).
@@ -95,6 +103,9 @@ impl CardArgs {
         };
         match crate::card_check::check_all(backend, &options) {
             Ok(reports) if reports.is_empty() => {
+                if let Some(exit) = Self::try_remote_card_check() {
+                    return exit;
+                }
                 eprintln!("no FINEID card present in any connected reader");
                 crate::exit_status::ExitStatus::NoCardPresent.into()
             }
@@ -108,6 +119,9 @@ impl CardArgs {
                 crate::exit_status::ExitStatus::Ok.into()
             }
             Err(crate::card_check::CardCheckError::ReaderPick(pe)) => {
+                if let Some(exit) = Self::try_remote_card_check() {
+                    return exit;
+                }
                 super::util::reader_pick_exit("card", &pe)
             }
             Err(e) => {
@@ -116,6 +130,64 @@ impl CardArgs {
             }
         }
     }
+
+    fn try_remote_card_check() -> Option<std::process::ExitCode> {
+        let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
+        let pair = vault.selected_pair().ok()??;
+        Some(Self::run_remote_card_check_with_pair(&pair))
+    }
+
+    fn run_remote_card_check() -> std::process::ExitCode {
+        let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
+        let Ok(Some(pair)) = vault.selected_pair() else {
+            eprintln!("no paired remote device found. Run `refineid pair` first.");
+            return std::process::ExitCode::FAILURE;
+        };
+        Self::run_remote_card_check_with_pair(&pair)
+    }
+
+    fn run_remote_card_check_with_pair(pair: &refineid_lib_core::rapp::PairRecord) -> std::process::ExitCode {
+    use refineid_lib_core::rapp::{CardOperation, CardOperationResult, execute_operation_with_pair};
+    let dev_name = pair.display_name.as_deref().unwrap_or("Remote Device");
+    let platform = pair.platform.as_deref().unwrap_or("Mobile");
+    println!("Connecting to paired remote reader: {dev_name} ({platform})...");
+
+    let identity_res = execute_operation_with_pair(pair, &CardOperation::ReadIdentity);
+    let inspect_res = execute_operation_with_pair(pair, &CardOperation::InspectCard);
+
+    println!("================================================================================");
+    println!("Remote FINEID Card (via {dev_name} - {platform})");
+    println!("================================================================================");
+    println!("  Pair ID:      {}", refineid_lib_core::hex::Hex::encode(&pair.pair_id));
+
+    match identity_res {
+        Ok(CardOperationResult::Identity { display_name, person_id }) => {
+            println!("  Card Holder:  {display_name}");
+            println!("  Personal ID:  {person_id}");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            println!("  Identity:     (Read error: {e})");
+        }
+    }
+
+    match inspect_res {
+        Ok(CardOperationResult::Inspection(insp)) => {
+            let p1_att = insp.pin1_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
+            let p2_att = insp.pin2_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
+            let puk_att = insp.puk_attempts.map_or_else(|| "Unknown".into(), |a| a.to_string());
+            println!("  PIN1 Status:  {p1_att} attempts remaining (factory: {})", insp.pin1_factory);
+            println!("  PIN2 Status:  {p2_att} attempts remaining (factory: {})", insp.pin2_factory);
+            println!("  PUK Status:   {puk_att} attempts remaining");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            println!("  Card Status:  (Inspect error: {e})");
+        }
+    }
+    println!("================================================================================");
+    std::process::ExitCode::SUCCESS
+}
 
     /// Parse the post-subcommand argv slice.
     ///
@@ -134,6 +206,7 @@ impl CardArgs {
         let mut crl_file: Option<PathBuf> = None;
         let mut save_cert_dir: Option<PathBuf> = None;
         let mut icao_pkd: Option<PathBuf> = None;
+        let mut remote = false;
         let tokens = argv.into_vec();
         let mut iter = tokens.iter();
         while let Some(arg) = iter.next() {
@@ -189,6 +262,7 @@ impl CardArgs {
                     })?;
                     icao_pkd = Some(PathBuf::from(value));
                 }
+                "--remote" => remote = true,
                 other => {
                     return Err(ArgParseError::Unexpected {
                         cmd: VerbTag::CardCheck,
@@ -216,6 +290,7 @@ impl CardArgs {
             crl_file,
             save_cert_dir,
             icao_pkd,
+            remote,
         })
     }
 }

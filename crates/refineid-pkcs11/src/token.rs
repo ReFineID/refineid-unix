@@ -640,6 +640,9 @@ pub(super) fn card_sign(
     mechanism: Mechanism,
     input: &[u8],
 ) -> Result<Vec<u8>, CkRv> {
+    if let Some(hex_id) = reader_name.strip_prefix("rapp:") {
+        return remote_card_sign(hex_id, mechanism, input);
+    }
     let backend = PcscBackend;
     let reader = ReaderId::new(reader_name.to_owned());
     // PinSequence: the whole SELECT -> probe -> VERIFY -> PSO span
@@ -697,6 +700,54 @@ pub(super) fn card_sign(
     }
 }
 
+fn remote_card_sign(
+    hex_id: &str,
+    mechanism: Mechanism,
+    input: &[u8],
+) -> Result<Vec<u8>, CkRv> {
+    let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
+    let pairs = vault.active_pairs().map_err(|_| CKR_DEVICE_ERROR)?;
+    let pair = pairs
+        .into_iter()
+        .find(|p| refineid_lib_core::hex::Hex::encode(&p.pair_id) == hex_id)
+        .ok_or(CKR_DEVICE_ERROR)?;
+
+    let (key_profile, algorithm, digest) = match mechanism {
+        Mechanism::Ecdsa => {
+            let digest_bytes = if input.len() == 48 {
+                input.to_vec()
+            } else if input.len() == 32 {
+                let mut d = vec![0u8; 16];
+                d.extend_from_slice(input);
+                d
+            } else {
+                return Err(CKR_DATA_LEN_RANGE);
+            };
+            ("eccP384", "ecdsaSha384", digest_bytes)
+        }
+        Mechanism::RsaPkcs => {
+            ("rsa3072", "rsaPkcs1Sha256", input.to_vec())
+        }
+    };
+
+    let op = refineid_lib_core::rapp::CardOperation::BrowserAuthenticate {
+        origin: "Browser Authentication".into(),
+        key_profile: key_profile.into(),
+        algorithm: algorithm.into(),
+        digest,
+    };
+
+    let result = refineid_lib_core::rapp::execute_operation_with_pair(&pair, &op)
+        .map_err(|_| CKR_DEVICE_ERROR)?;
+
+    match result {
+        refineid_lib_core::rapp::CardOperationResult::Signature { signature_bytes } => {
+            Ok(signature_bytes)
+        }
+        _ => Err(CKR_DEVICE_ERROR),
+    }
+}
+
 /// Verify and cache a `C_Login` PIN only after the live card accepts it.
 #[expect(
     clippy::redundant_pub_crate,
@@ -707,6 +758,9 @@ pub(super) fn card_login(
     pin_cache: &Arc<Mutex<PinSafetyCache>>,
     pin1: PinBytes,
 ) -> Result<(), CkRv> {
+    if reader_name.starts_with("rapp:") {
+        return Ok(());
+    }
     let backend = PcscBackend;
     let reader = ReaderId::new(reader_name.to_owned());
     // PinSequence: SELECT -> probe -> VERIFY is one held

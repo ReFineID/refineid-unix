@@ -85,6 +85,7 @@ pub mod card_change_pin;
 pub mod card_decrypt_auth;
 pub mod card_emrtd;
 pub mod card_export_all;
+pub mod card_pair;
 pub mod card_pubkey;
 pub mod card_sign;
 pub mod card_sign_document;

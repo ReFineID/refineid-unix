@@ -38,7 +38,7 @@ impl Hex {
     /// the buffer as needed.
     #[inline]
     #[must_use]
-    pub(crate) fn encode(bytes: &[u8]) -> String {
+    pub fn encode(bytes: &[u8]) -> String {
         use core::fmt::Write as _;
         let mut out = String::with_capacity(bytes.len().saturating_mul(2));
         for byte in bytes {

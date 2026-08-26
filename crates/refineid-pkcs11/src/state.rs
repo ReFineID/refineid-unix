@@ -344,6 +344,44 @@ impl ModuleState {
                 self.token_cache.insert(id, objects);
             }
         }
+
+        // Discover paired remote RAPP mobile readers (iPhone/Android)
+        let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
+        if let Ok(pairs) = vault.active_pairs() {
+            for pair in pairs {
+                let name = format!("rapp:{}", refineid_lib_core::hex::Hex::encode(&pair.pair_id));
+                let card_present = true;
+                if let Some(pos) = self.slots.iter().position(|s| s.reader_name == name) {
+                    if let Some(slot) = self.slots.get_mut(pos) {
+                        slot.card_present = card_present;
+                    }
+                    if let Some(ref cert) = pair.cached_auth_cert
+                        && let Ok(objects) = TokenObjects::from_cert_der(cert.clone())
+                    {
+                        let id = self.slots[pos].id;
+                        self.token_cache.insert(id, objects);
+                    }
+                } else {
+                    let id = self.next_slot_id;
+                    self.next_slot_id = self.next_slot_id.saturating_add(1);
+                    let product_name = pair.display_name.as_deref().unwrap_or("Phone");
+                    self.slots.push(SlotRecord {
+                        id,
+                        reader_name: name,
+                        card_present,
+                        reader_identity: ReaderIdentity {
+                            vendor_name: Some(format!("ReFineID Remote ({product_name})")),
+                            ifd_version: None,
+                        },
+                    });
+                    if let Some(ref cert) = pair.cached_auth_cert
+                        && let Ok(objects) = TokenObjects::from_cert_der(cert.clone())
+                    {
+                        self.token_cache.insert(id, objects);
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -517,6 +555,35 @@ impl ModuleState {
             return Ok(cached.clone());
         }
         let reader_name = self.reader_name(slot_id).ok_or(CKR_DEVICE_ERROR)?;
+        if let Some(hex_id) = reader_name.strip_prefix("rapp:") {
+            let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
+            let pairs = vault.active_pairs().map_err(|_| CKR_DEVICE_ERROR)?;
+            let pair = pairs
+                .into_iter()
+                .find(|p| refineid_lib_core::hex::Hex::encode(&p.pair_id) == hex_id)
+                .ok_or(CKR_DEVICE_ERROR)?;
+
+            let cert_der = if let Some(ref cert) = pair.cached_auth_cert {
+                cert.clone()
+            } else {
+                let op = refineid_lib_core::rapp::CardOperation::ReadCertificate {
+                    kind: "authentication".into(),
+                };
+                let res = refineid_lib_core::rapp::execute_operation_with_pair(&pair, &op)
+                    .map_err(|_| CKR_DEVICE_ERROR)?;
+                match res {
+                    refineid_lib_core::rapp::CardOperationResult::Certificate { der_bytes, .. } => {
+                        let _ = vault.update_cached_auth_cert(&pair.pair_id, &der_bytes);
+                        der_bytes
+                    }
+                    _ => return Err(CKR_DEVICE_ERROR),
+                }
+            };
+
+            let objects = TokenObjects::from_cert_der(cert_der)?;
+            self.token_cache.insert(slot_id, objects.clone());
+            return Ok(objects);
+        }
         let objects = build_token_objects(&reader_name)?;
         self.token_cache.insert(slot_id, objects.clone());
         Ok(objects)

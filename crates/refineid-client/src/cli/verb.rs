@@ -87,6 +87,12 @@ pub enum VerbTag {
     /// `cert chain` -- walk a cert's chain to a self-signed
     /// root.
     CertChain,
+    /// `pair` -- pair with a mobile device (iPhone/Android).
+    CardPair,
+    /// `pairs` -- list paired mobile devices.
+    CardPairs,
+    /// `unpair` -- revoke and delete a paired mobile device.
+    CardUnpair,
 }
 
 impl VerbTag {
@@ -113,6 +119,9 @@ impl VerbTag {
             Self::Verify => "verify",
             Self::CertShow => "cert show",
             Self::CertChain => "cert chain",
+            Self::CardPair => "pair",
+            Self::CardPairs => "pairs",
+            Self::CardUnpair => "unpair",
         }
     }
 }
@@ -166,6 +175,12 @@ pub enum Verb {
     CertShow(super::cert_show::CertShowArgs),
     /// `cert chain` -- chain walk.
     CertChain(super::cert_chain::CertChainArgs),
+    /// `pair` -- pair with mobile device.
+    CardPair(super::card_pair::PairArgs),
+    /// `pairs` -- list paired mobile devices.
+    CardPairs(super::card_pair::PairsArgs),
+    /// `unpair` -- revoke paired mobile device.
+    CardUnpair(super::card_pair::UnpairArgs),
 }
 
 impl Verb {
@@ -201,6 +216,9 @@ impl Verb {
             Self::Verify(_) => VerbTag::Verify,
             Self::CertShow(_) => VerbTag::CertShow,
             Self::CertChain(_) => VerbTag::CertChain,
+            Self::CardPair(_) => VerbTag::CardPair,
+            Self::CardPairs(_) => VerbTag::CardPairs,
+            Self::CardUnpair(_) => VerbTag::CardUnpair,
         }
     }
 
@@ -225,6 +243,9 @@ impl Verb {
             Self::Verify(a) => a.run(),
             Self::CertShow(a) => a.run(),
             Self::CertChain(a) => a.run(),
+            Self::CardPair(a) => a.run(),
+            Self::CardPairs(a) => a.run(),
+            Self::CardUnpair(a) => a.run(),
         }
     }
 }
@@ -324,6 +345,9 @@ pub fn parse_argv(argv: &super::argv::ProcessArgv) -> Result<Verb, ParseError> {
             return Err(VerbParseError::UnknownCertVerb { got: String::new() }.into());
         }
         [_, c, rest @ ..] if c == "verify" => (TopLevel::Verify, rest),
+        [_, c, rest @ ..] if c == "pair" => (TopLevel::Pair, rest),
+        [_, c, rest @ ..] if c == "pairs" => (TopLevel::Pairs, rest),
+        [_, c, rest @ ..] if c == "unpair" => (TopLevel::Unpair, rest),
         [_, c, v, rest @ ..] if c == "reader" => (TopLevel::Reader(v.as_str()), rest),
         [_, c, ..] if c == "reader" => {
             return Err(VerbParseError::Unrecognized {
@@ -340,6 +364,15 @@ pub fn parse_argv(argv: &super::argv::ProcessArgv) -> Result<Verb, ParseError> {
     Ok(match top {
         TopLevel::Card(Some("emrtd")) => {
             Verb::CardEmrtd(super::card_emrtd::EmrtdArgs::parse(rest)?)
+        }
+        TopLevel::Card(Some("pair")) | TopLevel::Pair => {
+            Verb::CardPair(super::card_pair::PairArgs::parse(rest)?)
+        }
+        TopLevel::Card(Some("pairs")) | TopLevel::Pairs => {
+            Verb::CardPairs(super::card_pair::PairsArgs::parse(rest)?)
+        }
+        TopLevel::Card(Some("unpair")) | TopLevel::Unpair => {
+            Verb::CardUnpair(super::card_pair::UnpairArgs::parse(rest)?)
         }
         TopLevel::Card(Some("sign-auth")) => Verb::CardSign(super::card_sign::SignArgs::parse(
             crate::card_sign::SignSlot::Auth,
@@ -444,6 +477,12 @@ enum TopLevel<'a> {
     Reader(&'a str),
     /// The standalone `verify` verb (cert + signature input).
     Verify,
+    /// `pair` verb.
+    Pair,
+    /// `pairs` verb.
+    Pairs,
+    /// `unpair` verb.
+    Unpair,
 }
 
 #[cfg(test)]
