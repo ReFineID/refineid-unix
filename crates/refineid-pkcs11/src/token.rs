@@ -314,8 +314,8 @@ fn push_der_len(out: &mut Vec<u8>, len: usize) {
         out.push(DER_LONG_FORM_ONE_OCTET);
         out.push(one);
     } else {
-        let high = u8::try_from(len.checked_shr(8).unwrap_or(0) & 0xFF).unwrap_or(0);
-        let low = u8::try_from(len & 0xFF).unwrap_or(0);
+        let high = u8::try_from(len.checked_shr(8).unwrap_or(0) % 256).unwrap_or(0);
+        let low = u8::try_from(len % 256).unwrap_or(0);
         out.push(DER_LONG_FORM_TWO_OCTETS);
         out.push(high);
         out.push(low);
@@ -475,7 +475,11 @@ impl TokenObjects {
     /// [`crate::ck::CKR_ATTRIBUTE_TYPE_INVALID`]); returns
     /// [`AttrValue::Sensitive`] for the private key's [`CKA_VALUE`].
     #[must_use]
-    pub(crate) fn attribute(&self, kind: ObjectKind, attr: CkAttributeType) -> Option<AttrValue<'_>> {
+    pub(crate) fn attribute(
+        &self,
+        kind: ObjectKind,
+        attr: CkAttributeType,
+    ) -> Option<AttrValue<'_>> {
         match kind {
             ObjectKind::Certificate => self.certificate_attribute(attr),
             ObjectKind::PublicKey => self.public_key_attribute(attr),
@@ -553,7 +557,9 @@ impl TokenObjects {
             CKA_PRIVATE | CKA_ENCRYPT | CKA_WRAP | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
             CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
             CKA_ID => Some(AttrValue::Borrowed(&self.id)),
-            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed),
+            CKA_SUBJECT => {
+                non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed)
+            }
             CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
             CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
             CKA_PUBLIC_EXPONENT => self.public_exponent.as_deref().map(AttrValue::Borrowed),
@@ -588,7 +594,9 @@ impl TokenObjects {
             | CKA_DERIVE => Some(bool_attr(CK_FALSE)),
             CKA_LABEL => Some(AttrValue::Borrowed(&self.label)),
             CKA_ID => Some(AttrValue::Borrowed(&self.id)),
-            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed),
+            CKA_SUBJECT => {
+                non_empty(self.auth_cert.view().subject.as_der()).map(AttrValue::Borrowed)
+            }
             CKA_VALUE => Some(AttrValue::Sensitive),
             CKA_MODULUS => self.modulus.as_deref().map(AttrValue::Borrowed),
             CKA_MODULUS_BITS => self.modulus_bits.map(ulong_attr),
@@ -1079,8 +1087,9 @@ mod tests {
     use refineid_lib_core::auth::PinStatus;
 
     use super::{
-        DER_TAG_INTEGER, DER_TAG_OCTET_STRING, OBJ_CERTIFICATE, OBJ_PRIVATE_KEY, OBJ_PUBLIC_KEY,
-        ObjectKind, der_integer, der_octet_string, pin1_verify_guard,
+        DER_LONG_FORM_ONE_OCTET, DER_TAG_INTEGER, DER_TAG_OCTET_STRING, OBJ_CERTIFICATE,
+        OBJ_PRIVATE_KEY, OBJ_PUBLIC_KEY, ObjectKind, der_integer, der_octet_string,
+        pin1_verify_guard,
     };
     use crate::ck::{CKR_DEVICE_ERROR, CKR_PIN_LOCKED};
 
@@ -1136,29 +1145,31 @@ mod tests {
     #[test]
     fn empty_der_span_is_an_absent_attribute() {
         assert_eq!(super::non_empty(&[]), None);
-        assert_eq!(super::non_empty(&[0x30]), Some(&[0x30][..]));
+        assert_eq!(
+            super::non_empty(b"non-empty"),
+            Some(b"non-empty".as_slice())
+        );
     }
 
     #[test]
     fn der_integer_short_form() {
-        let tlv = der_integer(&[0x01, 0x02, 0x03]);
-        assert_eq!(tlv, vec![DER_TAG_INTEGER, 0x03, 0x01, 0x02, 0x03]);
+        let tlv = der_integer(&[1, 2, 3]);
+        assert_eq!(tlv, vec![DER_TAG_INTEGER, 3, 1, 2, 3]);
     }
 
     #[test]
     fn der_octet_string_short_form() {
-        let tlv = der_octet_string(&[0xAA, 0xBB]);
-        assert_eq!(tlv, vec![DER_TAG_OCTET_STRING, 0x02, 0xAA, 0xBB]);
+        let tlv = der_octet_string(b"hi");
+        assert_eq!(tlv, vec![DER_TAG_OCTET_STRING, 2, b'h', b'i']);
     }
 
     #[test]
     fn der_length_long_form_one_octet() {
-        let body = vec![0x00_u8; 200];
+        let body = vec![0_u8; 200];
         let tlv = der_octet_string(&body);
-        // 0x04 tag, 0x81 long-form marker, 0xC8 = 200 length octet.
         assert_eq!(tlv[0], DER_TAG_OCTET_STRING);
-        assert_eq!(tlv[1], 0x81);
-        assert_eq!(tlv[2], 0xC8);
+        assert_eq!(tlv[1], DER_LONG_FORM_ONE_OCTET);
+        assert_eq!(tlv[2], 200);
         assert_eq!(tlv.len(), 203);
     }
 }
