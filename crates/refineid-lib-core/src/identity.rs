@@ -610,7 +610,7 @@ impl Surname {
     /// [`FreeTextError::Empty`] if `s` is empty,
     /// [`FreeTextError::TooLong`] if `s` exceeds
     /// [`FREE_TEXT_MAX_BYTES`].
-    pub(crate) fn new(s: String) -> Result<Self, FreeTextError> {
+    pub fn new(s: String) -> Result<Self, FreeTextError> {
         FreeText::parse(&s)?;
         Ok(Self(s))
     }
@@ -1057,7 +1057,7 @@ impl FirstName {
     /// # Errors
     /// [`FreeTextError::Empty`] if empty, [`FreeTextError::TooLong`]
     /// if it exceeds [`FREE_TEXT_MAX_BYTES`].
-    pub(crate) fn new(s: String) -> Result<Self, FreeTextError> {
+    pub fn new(s: String) -> Result<Self, FreeTextError> {
         FreeText::parse(&s)?;
         Ok(Self(s))
     }

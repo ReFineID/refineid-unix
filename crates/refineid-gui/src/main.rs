@@ -19,6 +19,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, TcpListener, UdpSocket};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -41,6 +42,10 @@ use refineid_lib_core::pin::{
 };
 use refineid_lib_core::pin_retry_risk::PinRetryRisk;
 use refineid_lib_core::pkcs15::CardGeneration;
+use refineid_lib_core::rapp::{
+    CardOperation, CardOperationResult, PairOfferContext, PairingOffer, RappDeviceVault,
+    TRANSPORT_STREAM, TransportCandidate, execute_operation_with_pair, pair_requester_over_stream,
+};
 use refineid_lib_core::sign::document::Format;
 use refineid_lib_core::sign::pades::SignatureInk;
 use slint::{ComponentHandle as _, Image, Rgba8Pixel, SharedPixelBuffer};
@@ -241,6 +246,28 @@ fn condense_reader_name(reader: &str) -> String {
     words.join(" ")
 }
 
+fn detect_local_ips() -> Vec<IpAddr> {
+    let mut ips = Vec::new();
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0")
+        && socket.connect("8.8.8.8:80").is_ok()
+        && let Ok(addr) = socket.local_addr()
+    {
+        ips.push(addr.ip());
+    }
+    if ips.is_empty() {
+        ips.push(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+    ips
+}
+
+/// Generate a cryptographically random 6-digit numeric pairing code (000000..999999).
+fn generate_random_pairing_code() -> u32 {
+    let mut bytes = [0u8; 4];
+    refineid_lib_core::rng::fill(&mut bytes).expect("CSPRNG");
+    let val = u32::from_ne_bytes(bytes);
+    val % 1_000_000
+}
+
 fn card_tab_label(card: &ManagedCard) -> String {
     let model = card
         .activation_context
@@ -435,6 +462,71 @@ fn deduplicate_cards(
             });
         }
     }
+
+    // Include paired mobile proxy devices from RappDeviceVault
+    let vault = RappDeviceVault::new_default();
+    if let Ok(pairs) = vault.active_pairs() {
+        for pair in pairs {
+            if let Some(cached_der) = pair.cached_auth_cert {
+                if let Ok(owned_cert) = refineid_lib_core::x509::OwnedCert::from_der(cached_der) {
+                    let view = owned_cert.view();
+                    let dev_name = pair.display_name.unwrap_or_else(|| "Mobile Device".into());
+                    let reader = format!("Mobile: {dev_name}");
+                    let serial = owned_cert.serial().to_string();
+                    let mut token_info = refineid_lib_core::pkcs15::TokenInfo::default();
+                    token_info.serial_number_hex = Some(TokenSerial::new(serial));
+                    token_info.label = Some(format!("Mobile NFC ({dev_name})"));
+
+                    let mut identity = refineid_lib_core::identity::CredentialIdentity::new();
+                    if let Some(cn) = view.subject.common_name() {
+                        let name_str = cn.as_str();
+                        if let Some((first, last)) = name_str.split_once(' ') {
+                            if let Ok(fn_val) =
+                                refineid_lib_core::identity::FirstName::new(first.to_owned())
+                            {
+                                identity = identity.with_first_name(fn_val);
+                            }
+                            if let Ok(sn_val) =
+                                refineid_lib_core::identity::Surname::new(last.to_owned())
+                            {
+                                identity = identity.with_surname(sn_val);
+                            }
+                        } else if let Ok(sn_val) =
+                            refineid_lib_core::identity::Surname::new(name_str.to_owned())
+                        {
+                            identity = identity.with_surname(sn_val);
+                        }
+                    }
+
+                    let report = refineid_client::card_check::CardCheckReport {
+                        reader,
+                        identity,
+                        atr_hex: String::new(),
+                        token_info,
+                        card_access: refineid_lib_core::card_access::CardAccess::default(),
+                        certs: Vec::new(),
+                        pin_reference_scheme: refineid_lib_core::auth::PinReferenceScheme::Citizen,
+                        pin1: Some(PinStatus::Verified),
+                        pin2: Some(PinStatus::Verified),
+                        puk: None,
+                        pin1_policy: None,
+                        pin2_policy: None,
+                        puk_policy: None,
+                        pin1_changed: Some(true),
+                        pin2_changed: Some(true),
+                        emrtd: None,
+                        emrtd_error: None,
+                        dsc_csca_check: None,
+                    };
+                    cards.push(ManagedCard {
+                        report,
+                        activation_context: None,
+                    });
+                }
+            }
+        }
+    }
+
     cards
 }
 
@@ -2151,6 +2243,142 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(window) = weak.upgrade() {
                 disarm_management_forms(&window);
                 disarm_pdf_signing(&window);
+            }
+        });
+    }
+
+    {
+        let weak = window.as_weak();
+        let inspection_sender = inspection_sender.clone();
+        let inspection_in_flight = Arc::clone(&inspection_in_flight);
+        window.on_start_pairing(move || {
+            let Some(window) = weak.upgrade() else {
+                return;
+            };
+            let code = generate_random_pairing_code();
+            let code_str = format!("{code:06}");
+            let d = code_str.as_bytes();
+            let formatted_code = format!(
+                "{} {} {}   {} {} {}",
+                char::from(d[0]),
+                char::from(d[1]),
+                char::from(d[2]),
+                char::from(d[3]),
+                char::from(d[4]),
+                char::from(d[5]),
+            );
+            window.set_pairing_code(formatted_code.into());
+            window.set_pairing_active(true);
+            window.set_pairing_status("Listening on port 52424 for phone connection...".into());
+
+            let weak_thread = weak.clone();
+            let inspection_sender_thread = inspection_sender.clone();
+            let inspection_in_flight_thread = Arc::clone(&inspection_in_flight);
+
+            thread::spawn(move || {
+                let port = 52424;
+                let local_ips = detect_local_ips();
+                let endpoints: Vec<String> =
+                    local_ips.iter().map(|ip| format!("{ip}:{port}")).collect();
+
+                let candidate = TransportCandidate::new_stream("stream-0", &endpoints);
+                let offer = PairingOffer::generate_numeric(code, vec![candidate.clone()]);
+                let offer_ctx = PairOfferContext {
+                    offer,
+                    selected_transport: TRANSPORT_STREAM.into(),
+                    selected_candidate_id: "stream-0".into(),
+                    transport_parameters: candidate.parameters,
+                };
+
+                let listener = match TcpListener::bind(("0.0.0.0", port)) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = weak_thread.upgrade() {
+                                w.set_pairing_active(false);
+                                w.set_status_text(format!("Pairing listener error: {e}").into());
+                            }
+                        });
+                        return;
+                    }
+                };
+
+                let (mut stream, _peer) = match listener.accept() {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = weak_thread.upgrade() {
+                                w.set_pairing_active(false);
+                                w.set_status_text(format!("Pairing connection error: {e}").into());
+                            }
+                        });
+                        return;
+                    }
+                };
+
+                let _ = slint::invoke_from_event_loop({
+                    let weak_progress = weak_thread.clone();
+                    move || {
+                        if let Some(w) = weak_progress.upgrade() {
+                            w.set_pairing_status("Connected! Authenticating with phone...".into());
+                        }
+                    }
+                });
+
+                let mut pair_record = match pair_requester_over_stream(
+                    &mut stream,
+                    &offer_ctx,
+                    "ReFineID Linux",
+                    "Linux",
+                ) {
+                    Ok(rec) => rec,
+                    Err(e) => {
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(w) = weak_thread.upgrade() {
+                                w.set_pairing_active(false);
+                                w.set_status_text(format!("Pairing handshake failed: {e}").into());
+                            }
+                        });
+                        return;
+                    }
+                };
+
+                let cert_op = CardOperation::ReadCertificate {
+                    kind: "authentication".into(),
+                };
+                if let Ok(res) = execute_operation_with_pair(&pair_record, &cert_op) {
+                    if let CardOperationResult::Certificate { der_bytes, .. } = res {
+                        pair_record.cached_auth_cert = Some(der_bytes);
+                    }
+                }
+
+                let vault = RappDeviceVault::new_default();
+                let _ = vault.save_pair(&pair_record);
+
+                let dev_name = pair_record
+                    .display_name
+                    .unwrap_or_else(|| "Mobile Device".into());
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = weak_thread.upgrade() {
+                        w.set_pairing_active(false);
+                        w.set_status_text(format!("✓ Successfully paired with {dev_name}!").into());
+                        request_card_inspection(
+                            &w,
+                            &inspection_sender_thread,
+                            &inspection_in_flight_thread,
+                        );
+                    }
+                });
+            });
+        });
+    }
+
+    {
+        let weak = window.as_weak();
+        window.on_cancel_pairing(move || {
+            if let Some(window) = weak.upgrade() {
+                window.set_pairing_active(false);
+                window.set_status_text("Pairing cancelled.".into());
             }
         });
     }

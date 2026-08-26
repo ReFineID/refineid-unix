@@ -84,7 +84,12 @@ export component RefineIdWindow inherits Window {
     in-out property <string> timestamp-host-path: "timestamp.sectigo.com/qualified";
     in-out property <string> timestamp-username: "";
     in-out property <string> timestamp-password: "";
+    in-out property <bool> pairing-active: false;
+    in-out property <string> pairing-code: "";
+    in-out property <string> pairing-status: "Waiting for phone...";
 
+    callback start-pairing();
+    callback cancel-pairing();
     callback refresh-card();
     callback select-card(index: int);
     callback load-images();
@@ -124,8 +129,8 @@ export component RefineIdWindow inherits Window {
                     font-weight: 700;
                 }
 
-                if !root.card-present: Text {
-                    text: "Insert card to reader.";
+                if !root.card-present && !root.pairing-active: Text {
+                    text: "Insert card to reader or pair a mobile device.";
                 }
             }
 
@@ -138,11 +143,73 @@ export component RefineIdWindow inherits Window {
             }
 
             Button {
+                text: "Pair Mobile";
+                height: 36px;
+                vertical-stretch: 0;
+                enabled: !root.busy && !root.pairing-active;
+                clicked => { root.start-pairing(); }
+            }
+
+            Button {
                 text: "Refresh";
                 height: 36px;
                 vertical-stretch: 0;
                 enabled: !root.busy;
                 clicked => { root.refresh-card(); }
+            }
+        }
+
+        if root.pairing-active: Rectangle {
+            background: #f4f6f8;
+            border-width: 1px;
+            border-color: #2b5c8f;
+            border-radius: 8px;
+            vertical-stretch: 0;
+
+            VerticalBox {
+                padding: 16px;
+                spacing: 10px;
+                HorizontalBox {
+                    Text {
+                        text: "Pair Mobile Device (iPhone / Android)";
+                        font-size: 18px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Button {
+                        text: "Cancel";
+                        height: 30px;
+                        clicked => { root.cancel-pairing(); }
+                    }
+                }
+                Text {
+                    text: "Enter this 6-digit pairing code in the ReFineID app on your phone:";
+                    font-size: 14px;
+                }
+                Rectangle {
+                    background: #ffffff;
+                    border-width: 1px;
+                    border-color: #cccccc;
+                    border-radius: 6px;
+                    height: 52px;
+                    Text {
+                        text: root.pairing-code;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Spinner { visible: true; width: 16px; height: 16px; }
+                    Text {
+                        text: root.pairing-status;
+                        vertical-alignment: center;
+                        font-size: 13px;
+                    }
+                }
             }
         }
 
