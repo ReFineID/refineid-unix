@@ -221,10 +221,12 @@ pub enum AttrValue {
     Sensitive,
 }
 
-/// The two token objects, parsed once from the card's authentication
+/// The token objects, parsed from the card's authentication
 /// certificate and cached per slot while the same card stays present.
 #[derive(Debug, Clone)]
 pub struct TokenObjects {
+    /// The parsed leaf authentication certificate.
+    auth_cert: OwnedCert,
     /// Key type: [`CKK_RSA`] or [`CKK_EC`], from the certificate SPKI.
     key_type: CkUlong,
     /// Sign mechanism this card profile uses, derived from
@@ -235,14 +237,6 @@ pub struct TokenObjects {
     label: Vec<u8>,
     /// [`CKA_ID`]: SHA-1 of the SPKI DER, shared by cert and key.
     id: Vec<u8>,
-    /// [`CKA_VALUE`] for the certificate object: the raw cert DER.
-    cert_der: Vec<u8>,
-    /// [`CKA_ISSUER`]: the issuer `Name` SEQUENCE DER.
-    issuer_der: Vec<u8>,
-    /// [`CKA_SUBJECT`]: the subject `Name` SEQUENCE DER.
-    subject_der: Vec<u8>,
-    /// [`CKA_SERIAL_NUMBER`]: the serial rebuilt as a DER INTEGER.
-    serial_der: Vec<u8>,
     /// Chip serial from PKCS#15 EF.TokenInfo: the plastic-printed
     /// card identifier when [`derive_printed_serial`] recognises
     /// the chip generation (the form a citizen can check against
@@ -261,37 +255,12 @@ pub struct TokenObjects {
     /// [`CKA_EC_POINT`] for an EC key: DER OCTET STRING of the SEC1
     /// point.
     ec_point: Option<Vec<u8>>,
-    /// Embedded DVV intermediate and root CA certificate objects.
-    ca_certs: Vec<CaCertData>,
+    /// Intermediate and root CA certificates as strongly-typed [`OwnedCert`]s.
+    ca_certs: Vec<OwnedCert>,
 }
 
-/// Parsed data for an embedded CA certificate object.
-#[derive(Debug, Clone)]
-struct CaCertData {
-    label: Vec<u8>,
-    id: Vec<u8>,
-    cert_der: Vec<u8>,
-    issuer_der: Vec<u8>,
-    subject_der: Vec<u8>,
-    serial_der: Vec<u8>,
-}
-
-fn load_ca_cert(cert_der: &'static [u8]) -> Result<CaCertData, CkRv> {
-    let parsed = OwnedCert::from_der(cert_der).map_err(|_err| CKR_DEVICE_ERROR)?;
-    let view = parsed.view();
-    let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
-    let label = view.subject.common_name().map_or_else(
-        || b"CA Certificate".to_vec(),
-        |cn| cn.as_str().as_bytes().to_vec(),
-    );
-    Ok(CaCertData {
-        label,
-        id,
-        cert_der: cert_der.to_vec(),
-        issuer_der: view.issuer.as_der().to_vec(),
-        subject_der: view.subject.as_der().to_vec(),
-        serial_der: der_integer(view.serial_der),
-    })
+fn load_static_ca_cert(cert_der: &'static [u8]) -> Result<OwnedCert, CkRv> {
+    OwnedCert::from_der(cert_der).map_err(|_err| CKR_DEVICE_ERROR)
 }
 
 /// Encode a [`CkUlong`] attribute value in native-endian form, the
@@ -361,77 +330,86 @@ fn der_octet_string(value: &[u8]) -> Vec<u8> {
 }
 
 impl TokenObjects {
-    /// Parse the two objects from a certificate DER blob.
+    /// Parse the token objects from a certificate DER blob.
     ///
     /// # Errors
     /// [`CKR_DEVICE_ERROR`] if the DER does not parse or the key
     /// algorithm is neither RSA nor secp384r1 EC (the only two FINEID
     /// auth profiles).
     pub(crate) fn from_cert_der(cert_der: Vec<u8>) -> Result<Self, CkRv> {
-        let parsed = OwnedCert::from_der(&cert_der).map_err(|_parse_err| CKR_DEVICE_ERROR)?;
-        let view = parsed.view();
+        let auth_cert = OwnedCert::from_der(cert_der).map_err(|_parse_err| CKR_DEVICE_ERROR)?;
+        let (key_type, mechanism, modulus, modulus_bits, public_exponent, ec_params, ec_point) = {
+            let view = auth_cert.view();
+            Self::extract_key_material(&view.spki)?
+        };
+        let view = auth_cert.view();
         let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
         let label = view.subject.common_name().map_or_else(
             || DEFAULT_LABEL.as_bytes().to_vec(),
             |cn| cn.as_str().as_bytes().to_vec(),
         );
-        let issuer_der = view.issuer.as_der().to_vec();
-        let subject_der = view.subject.as_der().to_vec();
-        let serial_der = der_integer(view.serial_der);
-        let mut token = Self {
-            key_type: CKK_RSA,
-            mechanism: Mechanism::RsaPkcs,
+        Ok(Self {
+            auth_cert,
+            key_type,
+            mechanism,
             label,
             id,
-            cert_der,
-            issuer_der,
-            subject_der,
-            serial_der,
             token_serial: String::new(),
-            modulus: None,
-            modulus_bits: None,
-            public_exponent: None,
-            ec_params: None,
-            ec_point: None,
+            modulus,
+            modulus_bits,
+            public_exponent,
+            ec_params,
+            ec_point,
             ca_certs: vec![
-                load_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
-                load_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
-                load_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
-                load_ca_cert(DVV_CA_ORG_G4R_DER)?,
-                load_ca_cert(DVV_CA_ROOT_ECC_DER)?,
-                load_ca_cert(DVV_CA_ROOT_RSA_DER)?,
+                load_static_ca_cert(DVV_CA_CITIZEN_G4E_DER)?,
+                load_static_ca_cert(DVV_CA_CITIZEN_G4R_DER)?,
+                load_static_ca_cert(DVV_CA_CITIZEN_G3_DER)?,
+                load_static_ca_cert(DVV_CA_ORG_G4R_DER)?,
+                load_static_ca_cert(DVV_CA_ROOT_ECC_DER)?,
+                load_static_ca_cert(DVV_CA_ROOT_RSA_DER)?,
             ],
-        };
-        token.fill_key_material(&view.spki)?;
-        Ok(token)
+        })
     }
 
-    /// Populate the key-type-specific attribute cache from the SPKI.
-    ///
-    /// # Errors
-    /// [`CKR_DEVICE_ERROR`] for any algorithm outside RSA / secp384r1
-    /// EC.
-    fn fill_key_material(
-        &mut self,
+    /// Extract key-type-specific attributes from the SPKI.
+    fn extract_key_material(
         spki: &refineid_lib_core::x509::SpkiDer<'_>,
-    ) -> Result<(), CkRv> {
+    ) -> Result<
+        (
+            CkUlong,
+            Mechanism,
+            Option<Vec<u8>>,
+            Option<CkUlong>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+        ),
+        CkRv,
+    > {
         match spki.algorithm() {
             PublicKeyAlgorithm::Rsa { modulus_bits } => {
                 let public = extract_rsa_public_key(spki.as_der()).ok_or(CKR_DEVICE_ERROR)?;
-                self.key_type = CKK_RSA;
-                self.mechanism = Mechanism::RsaPkcs;
-                self.modulus = Some(public.modulus.as_bytes().to_vec());
-                self.modulus_bits = CkUlong::try_from(modulus_bits).ok();
-                self.public_exponent = Some(public.exponent.as_bytes().to_vec());
-                Ok(())
+                Ok((
+                    CKK_RSA,
+                    Mechanism::RsaPkcs,
+                    Some(public.modulus.as_bytes().to_vec()),
+                    CkUlong::try_from(modulus_bits).ok(),
+                    Some(public.exponent.as_bytes().to_vec()),
+                    None,
+                    None,
+                ))
             }
             PublicKeyAlgorithm::Ec(EcCurve::Secp384r1) => {
                 let point = spki.ec_public_key_point().ok_or(CKR_DEVICE_ERROR)?;
-                self.key_type = CKK_EC;
-                self.mechanism = Mechanism::Ecdsa;
-                self.ec_params = Some(EC_PARAMS_SECP384R1.to_vec());
-                self.ec_point = Some(der_octet_string(point.as_bytes()));
-                Ok(())
+                Ok((
+                    CKK_EC,
+                    Mechanism::Ecdsa,
+                    None,
+                    None,
+                    None,
+                    Some(EC_PARAMS_SECP384R1.to_vec()),
+                    Some(der_octet_string(point.as_bytes())),
+                ))
             }
             PublicKeyAlgorithm::Ec(_)
             | PublicKeyAlgorithm::EcExplicit { .. }
@@ -473,9 +451,15 @@ impl TokenObjects {
         }
     }
 
-    /// Attribute lookup for an embedded CA certificate object.
+    /// Attribute lookup for an embedded or on-card CA certificate object.
     fn ca_attribute(&self, index: usize, attr: CkAttributeType) -> Option<AttrValue> {
         let ca = self.ca_certs.get(index)?;
+        let view = ca.view();
+        let label = view.subject.common_name().map_or_else(
+            || b"CA Certificate".to_vec(),
+            |cn| cn.as_str().as_bytes().to_vec(),
+        );
+        let id = Sha1::of(view.spki.as_der()).as_bytes().to_vec();
         let bytes = match attr {
             CKA_CLASS => ulong_attr(CKO_CERTIFICATE),
             CKA_CERTIFICATE_TYPE => ulong_attr(CKC_X_509),
@@ -483,12 +467,12 @@ impl TokenObjects {
             CKA_TOKEN => bool_attr(CK_TRUE),
             CKA_PRIVATE => bool_attr(CK_FALSE),
             CKA_TRUSTED => bool_attr(CK_TRUE),
-            CKA_LABEL => ca.label.clone(),
-            CKA_ID => ca.id.clone(),
-            CKA_VALUE => ca.cert_der.clone(),
-            CKA_ISSUER => non_empty(ca.issuer_der.clone())?,
-            CKA_SUBJECT => non_empty(ca.subject_der.clone())?,
-            CKA_SERIAL_NUMBER => non_empty(ca.serial_der.clone())?,
+            CKA_LABEL => label,
+            CKA_ID => id,
+            CKA_VALUE => ca.as_der().to_vec(),
+            CKA_ISSUER => non_empty(view.issuer.as_der().to_vec())?,
+            CKA_SUBJECT => non_empty(view.subject.as_der().to_vec())?,
+            CKA_SERIAL_NUMBER => non_empty(der_integer(view.serial_der))?,
             _ => return None,
         };
         Some(AttrValue::Available(bytes))
@@ -503,6 +487,7 @@ impl TokenObjects {
     /// concrete answer keeps `pkcs11-tool --list-objects` free of
     /// attribute-read failure noise.
     fn certificate_attribute(&self, attr: CkAttributeType) -> Option<AttrValue> {
+        let view = self.auth_cert.view();
         let bytes = match attr {
             CKA_CLASS => ulong_attr(CKO_CERTIFICATE),
             CKA_CERTIFICATE_TYPE => ulong_attr(CKC_X_509),
@@ -512,10 +497,10 @@ impl TokenObjects {
             CKA_PRIVATE | CKA_TRUSTED | CKA_LOCAL => bool_attr(CK_FALSE),
             CKA_LABEL => self.label.clone(),
             CKA_ID => self.id.clone(),
-            CKA_VALUE => self.cert_der.clone(),
-            CKA_ISSUER => non_empty(self.issuer_der.clone())?,
-            CKA_SUBJECT => non_empty(self.subject_der.clone())?,
-            CKA_SERIAL_NUMBER => non_empty(self.serial_der.clone())?,
+            CKA_VALUE => self.auth_cert.as_der().to_vec(),
+            CKA_ISSUER => non_empty(view.issuer.as_der().to_vec())?,
+            CKA_SUBJECT => non_empty(view.subject.as_der().to_vec())?,
+            CKA_SERIAL_NUMBER => non_empty(der_integer(view.serial_der))?,
             _ => return None,
         };
         Some(AttrValue::Available(bytes))
@@ -534,7 +519,7 @@ impl TokenObjects {
             CKA_PRIVATE | CKA_ENCRYPT | CKA_WRAP | CKA_DERIVE => bool_attr(CK_FALSE),
             CKA_LABEL => self.label.clone(),
             CKA_ID => self.id.clone(),
-            CKA_SUBJECT => non_empty(self.subject_der.clone())?,
+            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der().to_vec())?,
             CKA_MODULUS => self.modulus.clone()?,
             CKA_MODULUS_BITS => ulong_attr(self.modulus_bits?),
             CKA_PUBLIC_EXPONENT => self.public_exponent.clone()?,
@@ -570,7 +555,7 @@ impl TokenObjects {
             | CKA_DERIVE => bool_attr(CK_FALSE),
             CKA_LABEL => self.label.clone(),
             CKA_ID => self.id.clone(),
-            CKA_SUBJECT => non_empty(self.subject_der.clone())?,
+            CKA_SUBJECT => non_empty(self.auth_cert.view().subject.as_der().to_vec())?,
             CKA_VALUE => return Some(AttrValue::Sensitive),
             CKA_MODULUS => self.modulus.clone()?,
             CKA_MODULUS_BITS => ulong_attr(self.modulus_bits?),
@@ -616,10 +601,7 @@ impl TokenObjects {
         let Ok(digest) = <[u8; 32]>::try_from(hash) else {
             return CKR_DATA_INVALID;
         };
-        let Ok(parsed) = OwnedCert::from_der(&self.cert_der) else {
-            return CKR_DEVICE_ERROR;
-        };
-        let Some(key) = extract_rsa_public_key(parsed.view().spki.as_der()) else {
+        let Some(key) = extract_rsa_public_key(self.auth_cert.view().spki.as_der()) else {
             return CKR_DEVICE_ERROR;
         };
         let sig = Signature::<RsaPkcs1Sha256>::new(signature.to_vec());
@@ -634,10 +616,7 @@ impl TokenObjects {
     /// caller already hashed), the signature is card-native raw
     /// `r || s`.
     fn verify_ecdsa(&self, data: &[u8], signature: &[u8]) -> CkRv {
-        let Ok(parsed) = OwnedCert::from_der(&self.cert_der) else {
-            return CKR_DEVICE_ERROR;
-        };
-        let Some(point) = parsed.view().spki.ec_public_key_point() else {
+        let Some(point) = self.auth_cert.view().spki.ec_public_key_point() else {
             return CKR_DEVICE_ERROR;
         };
         let sig = Signature::<EcdsaP384>::new(signature.to_vec());
@@ -714,10 +693,31 @@ pub(super) fn build_token_objects(reader_name: &str) -> Result<TokenObjects, CkR
     let cert = card
         .read_certificate(CertSlot::Authentication)
         .map_err(|_read_err| CKR_DEVICE_ERROR)?;
+
+    // Read on-card CA certificates when present on this card generation
+    let mut on_card_cas = Vec::new();
+    for slot in [
+        CertSlot::IssuingCaEcc,
+        CertSlot::RootCa,
+        CertSlot::SignatureAlt,
+    ] {
+        if let Ok(der) = card.read_certificate(slot) {
+            if let Ok(c) = OwnedCert::from_der(der.into_bytes()) {
+                on_card_cas.push(c);
+            }
+        }
+    }
     drop(card);
+
     let mut objects = TokenObjects::from_cert_der(cert.into_bytes())?;
     if let Some(serial) = serial {
         objects.token_serial = serial;
+    }
+    // Prepend on-card CA certificates so live card certs take precedence
+    for ca in on_card_cas.into_iter().rev() {
+        if !objects.ca_certs.iter().any(|c| c.as_der() == ca.as_der()) {
+            objects.ca_certs.insert(0, ca);
+        }
     }
     Ok(objects)
 }
