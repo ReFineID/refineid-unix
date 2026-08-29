@@ -398,7 +398,7 @@ fn write_signed_info(
     // lives under `META-INF/`.
     for (index, object) in objects.iter().enumerate() {
         let id = reference_id(index);
-        let uri = escape_attribute(&percent_encode_path(&object.name));
+        let uri = escape_attribute(&object.name);
         let digest = base64::encode(&parameters.digest_algorithm.digest(&object.content));
         let _ignored = writeln!(out, r#"<ds:Reference Id="{id}" URI="{uri}">"#);
         let _ignored = writeln!(
