@@ -331,7 +331,7 @@ fn odf_manifest(objects: &[DataObject]) -> Vec<u8> {
         r#"  <manifest:file-entry manifest:full-path="/" manifest:media-type="{MIMETYPE_ASICE}"/>"#
     );
     for object in objects {
-        let path = escape_attribute(&percent_encode_path(&object.name));
+        let path = escape_attribute(&object.name);
         let media = escape_attribute(&object.mime_type);
         let _ignored = writeln!(
             manifest,
