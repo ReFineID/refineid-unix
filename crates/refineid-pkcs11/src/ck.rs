@@ -762,6 +762,8 @@ pub const CKF_WRITE_PROTECTED: CkFlags = 0x0000_0002;
 pub const CKF_LOGIN_REQUIRED: CkFlags = 0x0000_0004;
 /// `CKF_USER_PIN_INITIALIZED`: the user PIN is initialised.
 pub const CKF_USER_PIN_INITIALIZED: CkFlags = 0x0000_0008;
+/// `CKF_PROTECTED_AUTHENTICATION_PATH`: authentication happens on-device; no PIN prompt on host.
+pub const CKF_PROTECTED_AUTHENTICATION_PATH: CkFlags = 0x0000_0100;
 /// `CKF_USER_PIN_COUNT_LOW`: at least one user-PIN attempt has failed.
 pub const CKF_USER_PIN_COUNT_LOW: CkFlags = 0x0001_0000;
 /// `CKF_USER_PIN_FINAL_TRY`: one wrong user-PIN attempt will lock it.

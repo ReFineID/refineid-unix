@@ -26,7 +26,7 @@
 //! `PinBytes`) on `C_Logout`, `C_CloseSession` of the last session,
 //! card removal, and `C_Finalize`.
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use refineid_lib_core::backend::{ReaderAccessCap, ReaderBackend as _, ReaderId};
@@ -235,6 +235,8 @@ pub struct ModuleState {
     /// slot's first sighting counts as an event (the caller has
     /// not seen it yet).
     event_reported: BTreeMap<CkSlotId, bool>,
+    /// Active login state for remote RAPP readers (authenticated via on-device protected path).
+    remote_logged_in: BTreeSet<CkSlotId>,
 }
 
 impl ModuleState {
@@ -251,6 +253,7 @@ impl ModuleState {
             pin_caches: BTreeMap::new(),
             token_cache: BTreeMap::new(),
             event_reported: BTreeMap::new(),
+            remote_logged_in: BTreeSet::new(),
         };
         state.refresh_slots()?;
         Ok(state)
@@ -470,7 +473,7 @@ impl ModuleState {
     /// Drop a slot's PIN1 login once no sessions remain on it (per
     /// PKCS#11 the token login state ends when the last session
     /// closes).
-    fn forget_login_if_no_sessions(&self, slot_id: CkSlotId) {
+    fn forget_login_if_no_sessions(&mut self, slot_id: CkSlotId) {
         let still_open = self
             .sessions
             .values()
@@ -506,7 +509,8 @@ impl ModuleState {
     }
 
     /// Drop a slot's PIN1 login state (`C_Logout`).
-    pub(crate) fn logout(&self, slot_id: CkSlotId) {
+    pub(crate) fn logout(&mut self, slot_id: CkSlotId) {
+        self.remote_logged_in.remove(&slot_id);
         if let Some(cache) = self.pin_caches.get(&slot_id)
             && let Ok(mut cache) = cache.lock()
         {
@@ -514,9 +518,21 @@ impl ModuleState {
         }
     }
 
+    /// Mark a remote RAPP reader slot as logged in (authenticated on-device).
+    pub(crate) fn set_remote_logged_in(&mut self, slot_id: CkSlotId, logged_in: bool) {
+        if logged_in {
+            self.remote_logged_in.insert(slot_id);
+        } else {
+            self.remote_logged_in.remove(&slot_id);
+        }
+    }
+
     /// Whether a user is logged in on `slot_id`.
     #[must_use]
     pub(crate) fn is_logged_in(&self, slot_id: CkSlotId) -> bool {
+        if self.remote_logged_in.contains(&slot_id) {
+            return true;
+        }
         self.pin_caches.get(&slot_id).is_some_and(|cache| {
             cache
                 .lock()
@@ -617,6 +633,7 @@ impl ModuleState {
             pin_caches: BTreeMap::new(),
             token_cache: BTreeMap::new(),
             event_reported: BTreeMap::new(),
+            remote_logged_in: BTreeSet::new(),
         }
     }
 }

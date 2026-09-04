@@ -58,14 +58,22 @@ def main():
     env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/run/user/1000/bus"
     env["WAYLAND_DISPLAY"] = "wayland-0"
     env["REFINEID_DEBUG"] = "1"
+    env["REFINEID_PKCS11_LOG"] = "/home/pk/snap/firefox/common/pkcs11.log"
 
     print("[*] Launching Firefox on desktop...")
     proc = subprocess.Popen(
-        ["/snap/bin/firefox", "--marionette", "--no-remote", "about:blank"],
+        [
+            "/snap/bin/firefox",
+            "--marionette",
+            "--no-remote",
+            "-profile",
+            "/home/pk/snap/firefox/common/refineid-marionette-profile",
+            "about:blank",
+        ],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True
+        text=True,
     )
 
     sock = None
@@ -119,15 +127,11 @@ def main():
     # Start a background key injection thread that watches and handles prompts
     stop_typing = threading.Event()
     def auto_responder():
-        time.sleep(2.5)
-        print("[Auto-Responder] Typing PIN1 and pressing Enter...")
-        enter_pin(pin1)
-        time.sleep(1.5)
-        print("[Auto-Responder] Secondary Enter in case of cert confirmation...")
+        # Protected authentication path: PIN1 is NEVER typed on or sent from this computer!
+        # It is held safely on the mobile device. We only confirm cert selection if prompted.
+        time.sleep(2.0)
+        print("[Auto-Responder] Confirming certificate selection (Enter)...")
         press_enter()
-        time.sleep(1.5)
-        print("[Auto-Responder] Fallback PIN1 entry...")
-        enter_pin(pin1)
 
     responder = threading.Thread(target=auto_responder, daemon=True)
 
