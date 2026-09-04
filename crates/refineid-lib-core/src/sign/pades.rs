@@ -24,7 +24,7 @@
 //!
 //! Both cross-reference shapes: classic tables and the streams that
 //! replaced them in PDF 1.5, with the objects those index inside
-//! object streams ([`xref_stream`]). A revision is closed in the shape
+//! object streams (`xref_stream`). A revision is closed in the shape
 //! the document already uses. A stream behind a filter or predictor
 //! this reader does not decode is refused with
 //! [`PdfError::UnsupportedCrossReferenceStream`] rather than

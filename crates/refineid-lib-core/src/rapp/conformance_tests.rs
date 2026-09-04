@@ -166,9 +166,10 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
 
     // Spawn proxy thread to simulate iPhone/Android
     let proxy_handle = std::thread::spawn(move || -> PairRecord {
-        // 1. Send preamble
-        let preamble = StreamRendezvous::Pairing.encode().expect("ok");
-        write_frame(&mut proxy_pipe, &preamble).expect("ok");
+        // 1. Read preamble sent by requester
+        let preamble_bytes = read_frame(&mut proxy_pipe).expect("ok");
+        let dec_preamble = StreamRendezvous::decode(&preamble_bytes).expect("ok");
+        assert_eq!(dec_preamble, StreamRendezvous::Pairing);
 
         // 2. Drive Noise XXpsk3 as responder
         let proxy_static_bytes = [0x55u8; 32];

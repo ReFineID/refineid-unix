@@ -1398,6 +1398,9 @@ unsafe extern "C" fn c_set_pin(
     // C_Login with the new PIN, so the module never *assumes* a PIN
     // it has not seen the card accept via a real VERIFY.
     module.logout(slot_id);
+    if reader_name.starts_with("rapp:") {
+        return CKR_FUNCTION_NOT_SUPPORTED;
+    }
     // Drop the lock before card IO (an unrelated PKCS#11 call must
     // not block on the card round trip).
     drop(guard);

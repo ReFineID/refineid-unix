@@ -602,4 +602,35 @@ mod tests {
             .expect("the token binds to the digest we asked about");
         assert!(!token.is_empty(), "a token came back");
     }
+
+    #[test]
+    #[ignore = "needs paired RAPP remote card reader"]
+    #[cfg(feature = "tls-rustls")]
+    fn test_live_card_refineid_fi_login() {
+        use crate::client_auth::get_with_rapp_client_auth;
+        use refineid_lib_core::rapp::RappDeviceVault;
+        use refineid_lib_core::text::Uri;
+
+        let vault = RappDeviceVault::new_default();
+        let pairs = vault.active_pairs().expect("active pairs");
+        assert!(!pairs.is_empty(), "Need at least 1 active pair");
+        let pair = &pairs[0];
+
+        let cert_der = pair
+            .cached_auth_cert
+            .as_ref()
+            .expect("cached authentication certificate on pair record");
+
+        let url = Uri::parse("https://card.refineid.fi/".to_owned()).expect("valid URL");
+        let response = get_with_rapp_client_auth(&url, pair, cert_der).expect("successful login");
+
+        println!("=== Response from https://card.refineid.fi ===");
+        println!("{response}");
+        assert!(
+            response.contains("200 OK")
+                || response.contains("KOISTINEN PETRI")
+                || response.contains("HTTP/1.1 200"),
+            "response indicates authenticated login: {response}"
+        );
+    }
 }

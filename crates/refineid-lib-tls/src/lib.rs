@@ -24,6 +24,8 @@
 //! response body framing; [`policy`] the per-destination transport
 //! policy (TLS floor, redirect and size limits).
 
+#[cfg(feature = "tls-rustls")]
+pub mod client_auth;
 pub mod framing;
 pub mod http;
 pub mod policy;

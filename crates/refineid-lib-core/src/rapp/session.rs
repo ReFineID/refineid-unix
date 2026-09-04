@@ -31,6 +31,7 @@ use super::crypto::{
 use super::envelope::{MessageType, RappEnvelope, SequenceGuard};
 use super::messages::{
     CardOperation, CardOperationResult, PairRecord, PairingOffer, ResultStatus, StreamRendezvous,
+    StreamRendezvousName,
 };
 use super::transport::{read_frame, write_frame};
 use super::wire::{WireError, WireValue};
@@ -45,14 +46,9 @@ pub fn pair_requester_over_stream<S: Read + Write>(
     display_name: &str,
     platform: &str,
 ) -> Result<PairRecord, WireError> {
-    // 1. Read preamble
-    let preamble_bytes = read_frame(stream)?;
-    let rendezvous = StreamRendezvous::decode(&preamble_bytes)?;
-    if rendezvous != StreamRendezvous::Pairing {
-        return Err(WireError::InvalidValue {
-            field: "rendezvous_purpose",
-        });
-    }
+    // 1. Send preamble
+    let preamble = StreamRendezvous::Pairing.encode()?;
+    write_frame(stream, &preamble)?;
 
     // 2. Generate local static keypair for this pairing
     let mut local_static_bytes = [0u8; 32];
@@ -455,6 +451,67 @@ pub fn execute_operation_over_stream<S: Read + Write>(
     CardOperationResult::from_wire_body(result_body)
 }
 
+/// Resolve candidate IP:port endpoints advertised by `_refineid-stream._tcp` for the given service name.
+#[must_use]
+pub fn resolve_mdns_stream_endpoints(service_name: &str) -> Vec<String> {
+    for _ in 0..8 {
+        let output = match std::process::Command::new("avahi-browse")
+            .args(["-r", "-t", "-p", "-k", "_refineid-stream._tcp"])
+            .output()
+        {
+            Ok(out) => out,
+            Err(_) => return Vec::new(),
+        };
+
+        if !output.status.success() {
+            return Vec::new();
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut ipv4_list = Vec::new();
+        let mut ipv6_list = Vec::new();
+
+        for line in text.lines() {
+            if !line.starts_with('=') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split(';').collect();
+            if fields.len() < 9 {
+                continue;
+            }
+            let proto = fields[2];
+            let name = fields[3];
+            let ip = fields[7];
+            let port = fields[8];
+
+            if name == service_name && !ip.is_empty() && !port.is_empty() {
+                let addr = if ip.contains(':') {
+                    format!("[{ip}]:{port}")
+                } else {
+                    format!("{ip}:{port}")
+                };
+                if proto == "IPv4" {
+                    if !ipv4_list.contains(&addr) {
+                        ipv4_list.push(addr);
+                    }
+                } else if !ipv6_list.contains(&addr) {
+                    ipv6_list.push(addr);
+                }
+            }
+        }
+
+        if !ipv4_list.is_empty() || !ipv6_list.is_empty() {
+            let mut result = ipv4_list;
+            result.extend(ipv6_list);
+            return result;
+        }
+
+        std::thread::sleep(Duration::from_millis(250));
+    }
+
+    Vec::new()
+}
+
 /// Connect to a paired remote proxy over TCP and perform a card operation.
 pub fn execute_operation_with_pair(
     pair: &PairRecord,
@@ -470,29 +527,91 @@ pub fn execute_operation_with_pair(
             }
             list
         }
-        _ => return Err(WireError::MissingField { field: "endpoints" }),
+        _ => Vec::new(),
     };
 
-    if endpoints.is_empty() {
-        return Err(WireError::MissingField { field: "endpoints" });
-    }
-
     let mut last_err = WireError::InvalidValue { field: "connect" };
-    for endpoint in endpoints {
-        if let Ok(mut stream) = TcpStream::connect_timeout(
-            &endpoint
-                .parse::<SocketAddr>()
-                .map_err(|_| WireError::InvalidValue { field: "endpoint" })?,
-            Duration::from_secs(5),
-        ) {
-            let _ = stream.set_read_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
-            let _ = stream.set_write_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
-            return execute_operation_over_stream(&mut stream, pair, operation);
-        } else {
+
+    // 1. Try previously stored endpoints first
+    for endpoint in &endpoints {
+        if let Ok(addr) = endpoint.parse::<SocketAddr>() {
+            if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
+                let _ = stream.set_read_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
+                let _ = stream.set_write_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
+                return execute_operation_over_stream(&mut stream, pair, operation);
+            }
             last_err = WireError::InvalidValue {
                 field: "connect_failed",
             };
         }
     }
+
+    // 2. Resolve active rendezvous name via mDNS if stored endpoints failed or are absent
+    let rendezvous_name = StreamRendezvousName::name_from_rendezvous_token(&pair.rendezvous_token);
+    let resolved = resolve_mdns_stream_endpoints(&rendezvous_name);
+    for endpoint in &resolved {
+        if let Ok(addr) = endpoint.parse::<SocketAddr>() {
+            if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(5)) {
+                let _ = stream.set_read_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
+                let _ = stream.set_write_timeout(Some(DEFAULT_OPERATION_TIMEOUT));
+                return execute_operation_over_stream(&mut stream, pair, operation);
+            }
+            last_err = WireError::InvalidValue {
+                field: "connect_failed",
+            };
+        }
+    }
+
+    if endpoints.is_empty() && resolved.is_empty() {
+        return Err(WireError::MissingField { field: "endpoints" });
+    }
+
     Err(last_err)
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+    use crate::hex::Hex;
+    use crate::rapp::RappDeviceVault;
+
+    #[test]
+    #[ignore]
+    fn test_live_session_operation() {
+        let vault = RappDeviceVault::new_default();
+        let pairs = vault.active_pairs().expect("vault active pairs");
+        assert!(!pairs.is_empty(), "Need at least 1 active pair");
+        let pair = &pairs[0];
+        println!(
+            "Testing with pair: {} ({:?})",
+            Hex::encode(&pair.pair_id),
+            pair.display_name
+        );
+
+        let op = CardOperation::ReadCertificate {
+            kind: "authentication".into(),
+        };
+        let res = execute_operation_with_pair(pair, &op);
+        println!("Result: {res:?}");
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_live_browser_authenticate() {
+        let vault = RappDeviceVault::new_default();
+        let pairs = vault.active_pairs().expect("vault active pairs");
+        assert!(!pairs.is_empty(), "Need at least 1 active pair");
+        let pair = &pairs[0];
+
+        let op = CardOperation::BrowserAuthenticate {
+            origin: "https://card.refineid.fi".into(),
+            key_profile: "ecdsa_p384".into(),
+            algorithm: "ecdsa_sha384".into(),
+            digest: vec![0x42; 48],
+        };
+        let res = execute_operation_with_pair(pair, &op);
+        println!("Result: {res:?}");
+        assert!(res.is_ok());
+    }
 }

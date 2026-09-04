@@ -93,6 +93,8 @@ pub enum VerbTag {
     CardPairs,
     /// `unpair` -- revoke and delete a paired mobile device.
     CardUnpair,
+    /// `auth` -- authenticate to a TLS site via paired mobile device.
+    CardAuth,
 }
 
 impl VerbTag {
@@ -122,6 +124,7 @@ impl VerbTag {
             Self::CardPair => "pair",
             Self::CardPairs => "pairs",
             Self::CardUnpair => "unpair",
+            Self::CardAuth => "auth",
         }
     }
 }
@@ -181,6 +184,8 @@ pub enum Verb {
     CardPairs(super::card_pair::PairsArgs),
     /// `unpair` -- revoke paired mobile device.
     CardUnpair(super::card_pair::UnpairArgs),
+    /// `auth` -- authenticate to a TLS site via paired mobile device.
+    CardAuth(super::card_pair::AuthArgs),
 }
 
 impl Verb {
@@ -219,6 +224,7 @@ impl Verb {
             Self::CardPair(_) => VerbTag::CardPair,
             Self::CardPairs(_) => VerbTag::CardPairs,
             Self::CardUnpair(_) => VerbTag::CardUnpair,
+            Self::CardAuth(_) => VerbTag::CardAuth,
         }
     }
 
@@ -246,6 +252,7 @@ impl Verb {
             Self::CardPair(a) => a.run(),
             Self::CardPairs(a) => a.run(),
             Self::CardUnpair(a) => a.run(),
+            Self::CardAuth(a) => a.run(),
         }
     }
 }
@@ -348,6 +355,7 @@ pub fn parse_argv(argv: &super::argv::ProcessArgv) -> Result<Verb, ParseError> {
         [_, c, rest @ ..] if c == "pair" => (TopLevel::Pair, rest),
         [_, c, rest @ ..] if c == "pairs" => (TopLevel::Pairs, rest),
         [_, c, rest @ ..] if c == "unpair" => (TopLevel::Unpair, rest),
+        [_, c, rest @ ..] if c == "auth" => (TopLevel::Auth, rest),
         [_, c, v, rest @ ..] if c == "reader" => (TopLevel::Reader(v.as_str()), rest),
         [_, c, ..] if c == "reader" => {
             return Err(VerbParseError::Unrecognized {
@@ -373,6 +381,9 @@ pub fn parse_argv(argv: &super::argv::ProcessArgv) -> Result<Verb, ParseError> {
         }
         TopLevel::Card(Some("unpair")) | TopLevel::Unpair => {
             Verb::CardUnpair(super::card_pair::UnpairArgs::parse(rest)?)
+        }
+        TopLevel::Card(Some("auth")) | TopLevel::Auth => {
+            Verb::CardAuth(super::card_pair::AuthArgs::parse(rest)?)
         }
         TopLevel::Card(Some("sign-auth")) => Verb::CardSign(super::card_sign::SignArgs::parse(
             crate::card_sign::SignSlot::Auth,
@@ -483,6 +494,8 @@ enum TopLevel<'a> {
     Pairs,
     /// `unpair` verb.
     Unpair,
+    /// `auth` verb.
+    Auth,
 }
 
 #[cfg(test)]
@@ -602,5 +615,23 @@ mod tests {
     fn malformed_args_surface_as_args_error() -> TestResult {
         let r = parse_argv(&argv(&["refineid", "card", "emrtd", "--can", "abc"]));
         check_true(matches!(r, Err(ParseError::Args(_))), "Args(_)")
+    }
+
+    #[test]
+    fn pair_and_auth_subcommands() -> TestResult {
+        let sub = parse_argv(&argv(&["refineid", "pair", "--port", "9999"]))?;
+        check(&sub.tag(), &VerbTag::CardPair, "pair tag")?;
+        let sub = parse_argv(&argv(&["refineid", "pairs"]))?;
+        check(&sub.tag(), &VerbTag::CardPairs, "pairs tag")?;
+        let sub = parse_argv(&argv(&[
+            "refineid",
+            "unpair",
+            "0123456789abcdef0123456789abcdef",
+        ]))?;
+        check(&sub.tag(), &VerbTag::CardUnpair, "unpair tag")?;
+        let sub = parse_argv(&argv(&["refineid", "auth", "https://card.refineid.fi"]))?;
+        check(&sub.tag(), &VerbTag::CardAuth, "auth tag")?;
+        let sub = parse_argv(&argv(&["refineid", "card", "auth"]))?;
+        check(&sub.tag(), &VerbTag::CardAuth, "card auth tag")
     }
 }

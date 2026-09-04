@@ -35,12 +35,19 @@ pub const MAX_OFFER_TTL_MS: u64 = 180_000;
 /// Stored pair record format version.
 pub const PAIR_RECORD_FORMAT_VERSION: u64 = 2;
 
-/// Standard status profile name (`fi.refineid.status.v1`).
-pub const PROFILE_STATUS: &str = "fi.refineid.status.v1";
-/// Standard client authentication profile name (`fi.refineid.auth.v1`).
-pub const PROFILE_AUTH: &str = "fi.refineid.auth.v1";
-/// Standard document signature profile name (`fi.refineid.sign.v1`).
-pub const PROFILE_SIGN: &str = "fi.refineid.sign.v1";
+/// Standard status profile name (`fi.eid.card-status.v1`).
+pub const PROFILE_STATUS: &str = "fi.eid.card-status.v1";
+/// Standard client authentication profile name (`fi.eid.authentication.v1`).
+pub const PROFILE_AUTH: &str = "fi.eid.authentication.v1";
+/// Standard document signature profile name (`fi.eid.document-signing.v1`).
+pub const PROFILE_SIGN: &str = "fi.eid.document-signing.v1";
+
+/// Standard profiles requested in pairing offers.
+pub const OFFER_PROFILES: [&str; 3] = [
+    "fi.refineid.card-status.v1",
+    "fi.refineid.authentication.v1",
+    "fi.refineid.document-signing.v1",
+];
 
 /// Standard stream transport profile name.
 pub const TRANSPORT_STREAM: &str = "fi.refineid.stream.v1";
@@ -70,6 +77,15 @@ impl TransportCandidate {
             profile: TRANSPORT_STREAM.into(),
             candidate_id: candidate_id.into(),
             parameters: params,
+        }
+    }
+
+    /// Create a new stream candidate for dynamic mDNS rendezvous with empty parameters.
+    pub fn new_stream_rendezvous(candidate_id: &str) -> Self {
+        Self {
+            profile: TRANSPORT_STREAM.into(),
+            candidate_id: candidate_id.into(),
+            parameters: BTreeMap::new(),
         }
     }
 
@@ -167,9 +183,9 @@ impl PairingOffer {
             pairing_secret,
             suites: vec![PAIRING_SUITE.into()],
             profiles: vec![
-                PROFILE_STATUS.into(),
-                PROFILE_AUTH.into(),
-                PROFILE_SIGN.into(),
+                OFFER_PROFILES[0].into(),
+                OFFER_PROFILES[1].into(),
+                OFFER_PROFILES[2].into(),
             ],
             transports,
             offer_ttl_ms: MAX_OFFER_TTL_MS,
@@ -189,9 +205,9 @@ impl PairingOffer {
             pairing_secret,
             suites: vec![PAIRING_SUITE.into()],
             profiles: vec![
-                PROFILE_STATUS.into(),
-                PROFILE_AUTH.into(),
-                PROFILE_SIGN.into(),
+                OFFER_PROFILES[0].into(),
+                OFFER_PROFILES[1].into(),
+                OFFER_PROFILES[2].into(),
             ],
             transports,
             offer_ttl_ms: MAX_OFFER_TTL_MS,
@@ -425,6 +441,43 @@ impl StreamRendezvous {
                 field: "rendezvous",
             }),
         }
+    }
+}
+
+/// Derives the mDNS service name (`rf-<sha256[:8]>`) for stream rendezvous.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StreamRendezvousName;
+
+impl StreamRendezvousName {
+    /// Service prefix (`rf-`).
+    pub const PREFIX: &'static str = "rf-";
+    /// Digest prefix byte count (8 bytes = 16 hex characters).
+    pub const DIGEST_PREFIX_BYTE_COUNT: usize = 8;
+
+    /// Compute the rendezvous name from a byte slice.
+    #[must_use]
+    pub fn name_from_bytes(value: &[u8]) -> String {
+        let digest = crate::crypto::digest::Sha256::of(value);
+        let mut hex =
+            String::with_capacity(Self::PREFIX.len() + Self::DIGEST_PREFIX_BYTE_COUNT * 2);
+        hex.push_str(Self::PREFIX);
+        for b in &digest.as_bytes()[..Self::DIGEST_PREFIX_BYTE_COUNT] {
+            use core::fmt::Write;
+            let _ = write!(hex, "{b:02x}");
+        }
+        hex
+    }
+
+    /// Compute the rendezvous name from an offer URI.
+    #[must_use]
+    pub fn name_from_offer_uri(uri: &str) -> String {
+        Self::name_from_bytes(uri.as_bytes())
+    }
+
+    /// Compute the rendezvous name from a 16-byte rendezvous token.
+    #[must_use]
+    pub fn name_from_rendezvous_token(token: &[u8; 16]) -> String {
+        Self::name_from_bytes(token)
     }
 }
 
@@ -987,9 +1040,10 @@ impl CardOperationResult {
                 })
             }
             "signature" => {
-                let signature_bytes = match map.remove("signature") {
+                let signature_bytes = match map.remove("bytes").or_else(|| map.remove("signature"))
+                {
                     Some(WireValue::Bytes(b)) => b,
-                    _ => return Err(WireError::MissingField { field: "signature" }),
+                    _ => return Err(WireError::MissingField { field: "bytes" }),
                 };
                 Ok(Self::Signature { signature_bytes })
             }

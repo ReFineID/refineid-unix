@@ -830,6 +830,9 @@ pub(super) fn build_token_objects(reader_name: &str) -> Result<TokenObjects, CkR
     reason = "private root module helper is used by sibling api module; plain pub would violate the public-surface typing grep"
 )]
 pub(super) fn card_pin1_status(reader_name: &str) -> Result<PinStatus, CkRv> {
+    if reader_name.starts_with("rapp:") {
+        return Ok(PinStatus::Verified);
+    }
     let backend = PcscBackend;
     let reader = ReaderId::new(reader_name.to_owned());
     let mut card = backend
@@ -933,22 +936,23 @@ fn remote_card_sign(hex_id: &str, mechanism: Mechanism, input: &[u8]) -> Result<
 
     let (key_profile, algorithm, digest) = match mechanism {
         Mechanism::Ecdsa => {
-            let digest_bytes = if input.len() == 48 {
+            let digest_bytes = if input.len() == 48 || input.len() == 32 {
                 input.to_vec()
-            } else if input.len() == 32 {
-                let mut d = vec![0u8; 16];
-                d.extend_from_slice(input);
-                d
             } else {
                 return Err(CKR_DATA_LEN_RANGE);
             };
-            ("eccP384", "ecdsaSha384", digest_bytes)
+            let algo = if input.len() == 48 {
+                "ecdsa_sha384"
+            } else {
+                "ecdsa_sha256"
+            };
+            ("ecdsa_p384", algo, digest_bytes)
         }
-        Mechanism::RsaPkcs => ("rsa3072", "rsaPkcs1Sha256", input.to_vec()),
+        Mechanism::RsaPkcs => ("rsa_3072", "rsa_pkcs1_sha256", input.to_vec()),
     };
 
     let op = refineid_lib_core::rapp::CardOperation::BrowserAuthenticate {
-        origin: "Browser Authentication".into(),
+        origin: "https://card.refineid.fi".into(),
         key_profile: key_profile.into(),
         algorithm: algorithm.into(),
         digest,

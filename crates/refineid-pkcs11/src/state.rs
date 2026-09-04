@@ -277,7 +277,9 @@ impl ModuleState {
     /// # Errors
     /// [`CKR_DEVICE_ERROR`] if the reader backend cannot be queried.
     pub(crate) fn refresh_slots(&mut self) -> Result<(), CkRv> {
-        self.refresh_slots_with(&PcscProber)
+        self.refresh_slots_with(&PcscProber)?;
+        self.refresh_remote_slots();
+        Ok(())
     }
 
     /// [`Self::refresh_slots`] over an injected [`SlotProber`], so
@@ -344,8 +346,11 @@ impl ModuleState {
                 self.token_cache.insert(id, objects);
             }
         }
+        Ok(())
+    }
 
-        // Discover paired remote RAPP mobile readers (iPhone/Android)
+    /// Discover paired remote RAPP mobile readers (iPhone/Android) from the local vault.
+    fn refresh_remote_slots(&mut self) {
         let vault = refineid_lib_core::rapp::RappDeviceVault::new_default();
         if let Ok(pairs) = vault.active_pairs() {
             for pair in pairs {
@@ -385,7 +390,6 @@ impl ModuleState {
                 }
             }
         }
-        Ok(())
     }
 
     /// Drop cached objects and PIN1 login for a slot (on card

@@ -36,12 +36,12 @@ pub use crypto::{
 pub use envelope::{MessageType, RappEnvelope, SequenceGuard};
 pub use messages::{
     CardInspection, CardOperation, CardOperationResult, PROFILE_AUTH, PROFILE_SIGN, PROFILE_STATUS,
-    PairRecord, PairingOffer, ResultStatus, StreamRendezvous, TRANSPORT_BLE, TRANSPORT_STREAM,
-    TransportCandidate,
+    PairRecord, PairingOffer, ResultStatus, StreamRendezvous, StreamRendezvousName, TRANSPORT_BLE,
+    TRANSPORT_STREAM, TransportCandidate,
 };
 pub use session::{
     PairOfferContext, execute_operation_over_stream, execute_operation_with_pair,
-    pair_requester_over_stream,
+    pair_requester_over_stream, resolve_mdns_stream_endpoints,
 };
 pub use transport::{read_frame, write_frame};
 pub use vault::RappDeviceVault;

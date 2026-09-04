@@ -46,7 +46,14 @@ def main():
 
     env = dict(os.environ)
     env["DISPLAY"] = ":0"
-    env["XAUTHORITY"] = "/run/user/1000/.mutter-Xwaylandauth.6EXEU3"
+    import glob
+    xauth = os.environ.get("XAUTHORITY")
+    if not xauth or not os.path.exists(xauth):
+        matches = glob.glob("/run/user/1000/.mutter-Xwaylandauth.*")
+        if matches:
+            xauth = matches[0]
+    if xauth:
+        env["XAUTHORITY"] = xauth
     env["XDG_RUNTIME_DIR"] = "/run/user/1000"
     env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/run/user/1000/bus"
     env["WAYLAND_DISPLAY"] = "wayland-0"
@@ -112,17 +119,15 @@ def main():
     # Start a background key injection thread that watches and handles prompts
     stop_typing = threading.Event()
     def auto_responder():
-        # Give navigation 2 seconds to hit the TLS prompt
-        time.sleep(2)
-        print("[Auto-Responder] Simulating Enter for cert confirmation...")
-        press_enter()
-        time.sleep(1.5)
+        time.sleep(2.5)
         print("[Auto-Responder] Typing PIN1 and pressing Enter...")
         enter_pin(pin1)
-        time.sleep(2)
-        # In case there was a second dialog (cert prompt THEN PIN prompt)
-        print("[Auto-Responder] Secondary Enter/PIN check...")
+        time.sleep(1.5)
+        print("[Auto-Responder] Secondary Enter in case of cert confirmation...")
         press_enter()
+        time.sleep(1.5)
+        print("[Auto-Responder] Fallback PIN1 entry...")
+        enter_pin(pin1)
 
     responder = threading.Thread(target=auto_responder, daemon=True)
 
