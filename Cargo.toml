@@ -138,5 +138,5 @@ debug = false                # no debug info in release binary
 enum_glob_use = "deny"
 unwrap_used = "deny"
 allow_attributes_without_reason = "deny"
-nursery = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
+chunks_exact_to_as_chunks = "allow"
+

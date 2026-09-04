@@ -3,4 +3,4 @@
 set -eu
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-exec "$REPO_ROOT/script/verify-commit.sh"
+exec "$REPO_ROOT/script/verify-push.sh"

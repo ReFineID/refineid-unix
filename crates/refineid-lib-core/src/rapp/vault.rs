@@ -115,18 +115,18 @@ impl RappDeviceVault {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "cbor") {
-                if let Ok(mut file) = File::open(&path) {
-                    let mut bytes = Vec::new();
-                    if file.read_to_end(&mut bytes).is_ok() {
-                        if let Ok(record) = PairRecord::decode(&bytes) {
-                            pairs.push(record);
-                        }
-                    }
+            if path.extension().is_some_and(|ext| ext == "cbor")
+                && let Ok(mut file) = File::open(&path)
+            {
+                let mut bytes = Vec::new();
+                if file.read_to_end(&mut bytes).is_ok()
+                    && let Ok(record) = PairRecord::decode(&bytes)
+                {
+                    pairs.push(record);
                 }
             }
         }
-        pairs.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
+        pairs.sort_by_key(|a| core::cmp::Reverse(a.created_at_ms));
         Ok(pairs)
     }
 

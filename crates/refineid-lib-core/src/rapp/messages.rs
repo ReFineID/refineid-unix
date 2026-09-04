@@ -746,6 +746,10 @@ impl ResultStatus {
     }
 
     /// Parse status from specification string.
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "inherent parser returns Option rather than Result"
+    )]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "completed" => Some(Self::Completed),

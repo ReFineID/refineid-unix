@@ -211,7 +211,7 @@ impl NoiseSymmetricState {
     /// Mix data into the handshake transcript hash.
     pub fn mix_hash(&mut self, data: &[u8]) {
         let mut hasher = Sha256::new();
-        hasher.update(&self.handshake_hash);
+        hasher.update(self.handshake_hash);
         hasher.update(data);
         self.handshake_hash = hasher.finalize().into();
     }
@@ -359,6 +359,10 @@ impl core::fmt::Debug for NoiseHandshakeState {
 
 impl NoiseHandshakeState {
     /// Initialize a new handshake state.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Noise handshake state requires all protocol parameters"
+    )]
     pub fn new(
         pattern: NoisePatternKind,
         suite_name: &str,
@@ -426,7 +430,7 @@ impl NoiseHandshakeState {
     }
 
     fn local_writes_next(&self) -> bool {
-        (self.message_index % 2 == 0) == self.is_initiator
+        self.message_index.is_multiple_of(2) == self.is_initiator
     }
 
     fn ensure_local_ephemeral(&mut self) {

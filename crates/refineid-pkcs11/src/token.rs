@@ -748,7 +748,7 @@ impl TokenObjects {
     ) -> bool {
         template.iter().all(|(attr, wanted)| {
             self.attribute(kind, *attr)
-                .map_or(false, |val| val.as_bytes() == Some(wanted.as_slice()))
+                .is_some_and(|val| val.as_bytes() == Some(wanted.as_slice()))
         })
     }
 }
@@ -763,10 +763,7 @@ fn read_optional_ca_cert(card: &mut PcscCard, slot: CertSlot) -> Option<OwnedCer
         Ok(raw) => raw,
         Err(_read_err) => return None,
     };
-    match OwnedCert::from_der(raw.into_bytes()) {
-        Ok(cert) => Some(cert),
-        Err(_parse_err) => None,
-    }
+    OwnedCert::from_der(raw.into_bytes()).ok()
 }
 
 /// Build the token objects for `reader_name`: open the card once,

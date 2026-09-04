@@ -697,9 +697,7 @@ fn dnssec_lookup(host: &str) -> DnssecLookup {
         .name("refineid-dnssec".to_owned())
         .spawn(move || dnssec_lookup_on_worker(&host));
     worker.map_or(DnssecLookup::Fallback, |worker| {
-        worker
-            .join()
-            .map_or(DnssecLookup::Fallback, core::convert::identity)
+        worker.join().unwrap_or(DnssecLookup::Fallback)
     })
 }
 

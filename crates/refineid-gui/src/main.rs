@@ -467,62 +467,64 @@ fn deduplicate_cards(
     let vault = RappDeviceVault::new_default();
     if let Ok(pairs) = vault.active_pairs() {
         for pair in pairs {
-            if let Some(cached_der) = pair.cached_auth_cert {
-                if let Ok(owned_cert) = refineid_lib_core::x509::OwnedCert::from_der(cached_der) {
-                    let view = owned_cert.view();
-                    let dev_name = pair.display_name.unwrap_or_else(|| "Mobile Device".into());
-                    let reader = format!("Mobile: {dev_name}");
-                    let serial = owned_cert.serial().to_string();
-                    let mut token_info = refineid_lib_core::pkcs15::TokenInfo::default();
-                    token_info.serial_number_hex = Some(TokenSerial::new(serial));
-                    token_info.label = Some(format!("Mobile NFC ({dev_name})"));
+            if let Some(cached_der) = pair.cached_auth_cert
+                && let Ok(owned_cert) = refineid_lib_core::x509::OwnedCert::from_der(cached_der)
+            {
+                let view = owned_cert.view();
+                let dev_name = pair.display_name.unwrap_or_else(|| "Mobile Device".into());
+                let reader = format!("Mobile: {dev_name}");
+                let serial = owned_cert.serial().to_string();
+                let token_info = refineid_lib_core::pkcs15::TokenInfo {
+                    serial_number_hex: Some(TokenSerial::new(serial)),
+                    label: Some(format!("Mobile NFC ({dev_name})")),
+                    ..Default::default()
+                };
 
-                    let mut identity = refineid_lib_core::identity::CredentialIdentity::new();
-                    if let Some(cn) = view.subject.common_name() {
-                        let name_str = cn.as_str();
-                        if let Some((first, last)) = name_str.split_once(' ') {
-                            if let Ok(fn_val) =
-                                refineid_lib_core::identity::FirstName::new(first.to_owned())
-                            {
-                                identity = identity.with_first_name(fn_val);
-                            }
-                            if let Ok(sn_val) =
-                                refineid_lib_core::identity::Surname::new(last.to_owned())
-                            {
-                                identity = identity.with_surname(sn_val);
-                            }
-                        } else if let Ok(sn_val) =
-                            refineid_lib_core::identity::Surname::new(name_str.to_owned())
+                let mut identity = refineid_lib_core::identity::CredentialIdentity::new();
+                if let Some(cn) = view.subject.common_name() {
+                    let name_str = cn.as_str();
+                    if let Some((first, last)) = name_str.split_once(' ') {
+                        if let Ok(fn_val) =
+                            refineid_lib_core::identity::FirstName::new(first.to_owned())
+                        {
+                            identity = identity.with_first_name(fn_val);
+                        }
+                        if let Ok(sn_val) =
+                            refineid_lib_core::identity::Surname::new(last.to_owned())
                         {
                             identity = identity.with_surname(sn_val);
                         }
+                    } else if let Ok(sn_val) =
+                        refineid_lib_core::identity::Surname::new(name_str.to_owned())
+                    {
+                        identity = identity.with_surname(sn_val);
                     }
-
-                    let report = refineid_client::card_check::CardCheckReport {
-                        reader,
-                        identity,
-                        atr_hex: String::new(),
-                        token_info,
-                        card_access: refineid_lib_core::card_access::CardAccess::default(),
-                        certs: Vec::new(),
-                        pin_reference_scheme: refineid_lib_core::auth::PinReferenceScheme::Citizen,
-                        pin1: Some(PinStatus::Verified),
-                        pin2: Some(PinStatus::Verified),
-                        puk: None,
-                        pin1_policy: None,
-                        pin2_policy: None,
-                        puk_policy: None,
-                        pin1_changed: Some(true),
-                        pin2_changed: Some(true),
-                        emrtd: None,
-                        emrtd_error: None,
-                        dsc_csca_check: None,
-                    };
-                    cards.push(ManagedCard {
-                        report,
-                        activation_context: None,
-                    });
                 }
+
+                let report = refineid_client::card_check::CardCheckReport {
+                    reader,
+                    identity,
+                    atr_hex: String::new(),
+                    token_info,
+                    card_access: refineid_lib_core::card_access::CardAccess::default(),
+                    certs: Vec::new(),
+                    pin_reference_scheme: refineid_lib_core::auth::PinReferenceScheme::Citizen,
+                    pin1: Some(PinStatus::Verified),
+                    pin2: Some(PinStatus::Verified),
+                    puk: None,
+                    pin1_policy: None,
+                    pin2_policy: None,
+                    puk_policy: None,
+                    pin1_changed: Some(true),
+                    pin2_changed: Some(true),
+                    emrtd: None,
+                    emrtd_error: None,
+                    dsc_csca_check: None,
+                };
+                cards.push(ManagedCard {
+                    report,
+                    activation_context: None,
+                });
             }
         }
     }
@@ -2346,10 +2348,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 let cert_op = CardOperation::ReadCertificate {
                     kind: "authentication".into(),
                 };
-                if let Ok(res) = execute_operation_with_pair(&pair_record, &cert_op) {
-                    if let CardOperationResult::Certificate { der_bytes, .. } = res {
-                        pair_record.cached_auth_cert = Some(der_bytes);
-                    }
+                if let Ok(CardOperationResult::Certificate { der_bytes, .. }) =
+                    execute_operation_with_pair(&pair_record, &cert_op)
+                {
+                    pair_record.cached_auth_cert = Some(der_bytes);
                 }
 
                 let vault = RappDeviceVault::new_default();

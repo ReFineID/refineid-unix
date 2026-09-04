@@ -36,6 +36,10 @@ esac
     echo "missing canonical hook: $REPO_ROOT/$HOOK_DIR/pre-commit" >&2
     exit 1
 }
+[ -f "$REPO_ROOT/$HOOK_DIR/pre-push" ] || {
+    echo "missing canonical hook: $REPO_ROOT/$HOOK_DIR/pre-push" >&2
+    exit 1
+}
 
 if [ "$check_only" -eq 1 ]; then
     hp=$(git -C "$REPO_ROOT" config --get core.hooksPath 2>/dev/null || true)
@@ -44,10 +48,10 @@ if [ "$check_only" -eq 1 ]; then
         echo "  run install-githook.sh to fix." >&2
         exit 1
     fi
-    echo "verify: core.hooksPath = $HOOK_DIR, hook present. OK."
+    echo "verify: core.hooksPath = $HOOK_DIR, hooks present. OK."
     exit 0
 fi
 
-chmod +x "$REPO_ROOT/$HOOK_DIR/pre-commit"
+chmod +x "$REPO_ROOT/$HOOK_DIR/pre-commit" "$REPO_ROOT/$HOOK_DIR/pre-push"
 git -C "$REPO_ROOT" config core.hooksPath "$HOOK_DIR"
-echo "githook installed: core.hooksPath = $HOOK_DIR"
+echo "githooks installed: core.hooksPath = $HOOK_DIR"
