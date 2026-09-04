@@ -42,23 +42,23 @@ use refineid_lib_core::pin_retry_risk::PinRetryRisk;
 use crate::ck::CKF_WRITE_PROTECTED;
 use crate::ck::{
     CK_EFFECTIVELY_INFINITE, CK_UNAVAILABLE_INFORMATION, CKF_DONT_BLOCK, CKF_EC_F_P,
-    CKF_EC_NAMEDCURVE, CKF_EC_UNCOMPRESS, CKF_HW_SLOT, CKF_LOGIN_REQUIRED, CKF_REMOVABLE_DEVICE,
-    CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_COUNT_LOW,
-    CKF_USER_PIN_FINAL_TRY, CKF_USER_PIN_INITIALIZED, CKF_USER_PIN_LOCKED, CKR_ARGUMENTS_BAD,
-    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_DEVICE_ERROR,
-    CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR,
-    CKR_KEY_FUNCTION_NOT_PERMITTED, CKR_KEY_HANDLE_INVALID, CKR_KEY_INDIGESTIBLE,
-    CKR_MECHANISM_INVALID, CKR_NO_EVENT, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_OPERATION_ACTIVE,
-    CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_INVALID, CKR_PIN_LEN_RANGE,
-    CKR_RANDOM_SEED_NOT_SUPPORTED, CKR_SESSION_CLOSED, CKR_SESSION_HANDLE_INVALID,
-    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID, CKR_TOKEN_NOT_PRESENT,
-    CKR_TOKEN_WRITE_PROTECTED, CKR_USER_ALREADY_LOGGED_IN, CKR_USER_NOT_LOGGED_IN,
-    CKR_USER_TYPE_INVALID, CKU_USER, CkAttributePtr, CkBbool, CkBytePtr, CkCInitializeArgs,
-    CkFlags, CkFunctionList, CkFunctionListPtrPtr, CkInfo, CkInfoPtr, CkMechanismInfo,
-    CkMechanismInfoPtr, CkMechanismPtr, CkMechanismType, CkMechanismTypePtr, CkNotify,
-    CkObjectHandle, CkObjectHandlePtr, CkRv, CkSessionHandle, CkSessionHandlePtr, CkSessionInfo,
-    CkSessionInfoPtr, CkSlotId, CkSlotIdPtr, CkSlotInfo, CkSlotInfoPtr, CkTokenInfo,
+    CKF_EC_NAMEDCURVE, CKF_EC_UNCOMPRESS, CKF_HW_SLOT, CKF_LOGIN_REQUIRED,
+    CKF_PROTECTED_AUTHENTICATION_PATH, CKF_REMOVABLE_DEVICE, CKF_SERIAL_SESSION, CKF_SIGN,
+    CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_USER_PIN_COUNT_LOW, CKF_USER_PIN_FINAL_TRY,
+    CKF_USER_PIN_INITIALIZED, CKF_USER_PIN_LOCKED, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_SENSITIVE,
+    CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_DEVICE_ERROR, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR, CKR_KEY_FUNCTION_NOT_PERMITTED,
+    CKR_KEY_HANDLE_INVALID, CKR_KEY_INDIGESTIBLE, CKR_MECHANISM_INVALID, CKR_NO_EVENT,
+    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
+    CKR_PIN_INVALID, CKR_PIN_LEN_RANGE, CKR_RANDOM_SEED_NOT_SUPPORTED, CKR_SESSION_CLOSED,
+    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CKR_TOKEN_NOT_PRESENT, CKR_TOKEN_WRITE_PROTECTED, CKR_USER_ALREADY_LOGGED_IN,
+    CKR_USER_NOT_LOGGED_IN, CKR_USER_TYPE_INVALID, CKU_USER, CkAttributePtr, CkBbool, CkBytePtr,
+    CkCInitializeArgs, CkFlags, CkFunctionList, CkFunctionListPtrPtr, CkInfo, CkInfoPtr,
+    CkMechanismInfo, CkMechanismInfoPtr, CkMechanismPtr, CkMechanismType, CkMechanismTypePtr,
+    CkNotify, CkObjectHandle, CkObjectHandlePtr, CkRv, CkSessionHandle, CkSessionHandlePtr,
+    CkSessionInfo, CkSessionInfoPtr, CkSlotId, CkSlotIdPtr, CkSlotInfo, CkSlotInfoPtr, CkTokenInfo,
     CkTokenInfoPtr, CkUlong, CkUlongPtr, CkUserType, CkUtf8Char, CkUtf8CharPtr, CkVersion,
     CkVoidPtr,
 };
@@ -461,9 +461,10 @@ unsafe extern "C" fn c_get_token_info(slot_id: CkSlotId, info: CkTokenInfoPtr) -
         Ok(status) => status,
         Err(error) => return error,
     };
+    let is_remote = reader_name.starts_with("rapp:");
     // SAFETY: caller guarantees info is a writable CK_TOKEN_INFO.
     unsafe {
-        info.write(token_info_value(&serial, pin1_status));
+        info.write(token_info_value(&serial, pin1_status, is_remote));
     }
     CKR_OK
 }
@@ -496,18 +497,24 @@ const TOKEN_LABEL_IDENTIFY: &str = "Basic (PIN 1)";
 /// carries the module identity in principle, but `p11-kit-proxy`
 /// masks it with its own, so the token manufacturer is the only
 /// producer hint that reaches proxy consumers.
-fn token_info_value(serial: &str, pin1_status: PinStatus) -> CkTokenInfo {
+fn token_info_value(serial: &str, pin1_status: PinStatus, is_remote: bool) -> CkTokenInfo {
     // With `pin-change` enabled the token is not write-protected, so
     // NSS offers "Change Password" -> C_SetPIN. In the default
     // (login-only) build the token reports write-protected and NSS
     // greys the change dialog out; object mutation is refused
     // per-function (`C_CreateObject` and friends are stubs) either way.
     #[cfg(feature = "pin-change")]
-    let flags = CKF_LOGIN_REQUIRED | CKF_USER_PIN_INITIALIZED | CKF_TOKEN_INITIALIZED;
+    let base_flags = CKF_LOGIN_REQUIRED | CKF_USER_PIN_INITIALIZED | CKF_TOKEN_INITIALIZED;
     #[cfg(not(feature = "pin-change"))]
-    let flags =
+    let base_flags =
         CKF_LOGIN_REQUIRED | CKF_USER_PIN_INITIALIZED | CKF_TOKEN_INITIALIZED | CKF_WRITE_PROTECTED;
-    let flags = flags | user_pin_status_flags(pin1_status);
+    let flags = if is_remote {
+        // Remote readers (Android/iPhone) authenticate on-device. The PIN
+        // is never typed on or transmitted by this computer.
+        base_flags | CKF_PROTECTED_AUTHENTICATION_PATH
+    } else {
+        base_flags | user_pin_status_flags(pin1_status)
+    };
     CkTokenInfo {
         label: padded_field(TOKEN_LABEL_IDENTIFY),
         manufacturer_id: padded_field("ReFineID"),
@@ -775,6 +782,31 @@ unsafe extern "C" fn c_login(
     if user_type != CKU_USER {
         return CKR_USER_TYPE_INVALID;
     }
+    let mut guard = match lock_module() {
+        Ok(guard) => guard,
+        Err(err) => return err,
+    };
+    let Some(module) = guard.as_mut() else {
+        return CKR_CRYPTOKI_NOT_INITIALIZED;
+    };
+    let Some(session_ref) = module.session(session) else {
+        return CKR_SESSION_HANDLE_INVALID;
+    };
+    let slot_id = session_ref.slot_id();
+    if module.is_logged_in(slot_id) {
+        return CKR_USER_ALREADY_LOGGED_IN;
+    }
+    let Some(reader_name) = module.reader_name(slot_id) else {
+        return CKR_DEVICE_ERROR;
+    };
+    if reader_name.starts_with("rapp:") {
+        // Protected authentication path: PIN1 is never typed on or transmitted by this computer.
+        // The mobile device holds credentials in protected on-device storage.
+        module.set_remote_logged_in(slot_id, true);
+        diag!("C_Login remote reader session={session} logged in via protected auth path");
+        return CKR_OK;
+    }
+
     if pin_ptr.is_null() {
         return CKR_ARGUMENTS_BAD;
     }
@@ -804,23 +836,6 @@ unsafe extern "C" fn c_login(
     if let Err(_role_err) = pin1.validate_digits(PIN1_MIN_DIGITS, PIN1_MAX_DIGITS) {
         return CKR_PIN_LEN_RANGE;
     }
-    let mut guard = match lock_module() {
-        Ok(guard) => guard,
-        Err(err) => return err,
-    };
-    let Some(module) = guard.as_mut() else {
-        return CKR_CRYPTOKI_NOT_INITIALIZED;
-    };
-    let Some(session_ref) = module.session(session) else {
-        return CKR_SESSION_HANDLE_INVALID;
-    };
-    let slot_id = session_ref.slot_id();
-    if module.is_logged_in(slot_id) {
-        return CKR_USER_ALREADY_LOGGED_IN;
-    }
-    let Some(reader_name) = module.reader_name(slot_id) else {
-        return CKR_DEVICE_ERROR;
-    };
     let pin_cache = match module.pin_cache(slot_id) {
         Ok(cache) => cache,
         Err(error) => return error,
