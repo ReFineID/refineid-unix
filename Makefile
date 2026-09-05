@@ -2,15 +2,16 @@
 
 CARGO ?= cargo
 
-.PHONY: default help build check clean
+.PHONY: default help build check clean distclean
 
 default: build
 
 help:
 	@echo "ReFineID for Unix."
-	@echo "  make build   -> release build of the whole workspace"
-	@echo "  make check   -> build + test + clippy + fmt gate"
-	@echo "  make clean   -> remove build artifacts"
+	@echo "  make build      -> release build of the whole workspace"
+	@echo "  make check      -> build + test + clippy + fmt gate"
+	@echo "  make clean      -> remove build artifacts"
+	@echo "  make distclean  -> remove build artifacts and distribution archives"
 	@echo ""
 	@echo "NixOS users: see doc/install-nixos.md (nix build / NixOS module)."
 
@@ -26,4 +27,8 @@ check:
 	./script/check.sh
 
 clean:
-	$(CARGO) clean
+	-$(CARGO) clean
+	rm -rf target result result-*
+
+distclean: clean
+	rm -rf refineid-*.tar*
