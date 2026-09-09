@@ -1,0 +1,17 @@
+# build outputs
+**/target/
+/target/
+*.swp
+
+# Nix build outputs
+/result
+/result-*
+
+# macOS metadata
+.DS_Store
+
+# Agent / tooling local state
+.claude/
+
+# Source-release tarballs
+/refineid-*.tar*

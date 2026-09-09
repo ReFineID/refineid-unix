@@ -1,0 +1,24 @@
+[package]
+name = "refineid-lib-tls"
+description = "Server-authenticated HTTPS client for refineid (rustls) plus the TLS-agnostic HTTP/1.1 protocol types."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+refineid-lib-core.workspace = true
+rustls = { workspace = true, optional = true }
+zeroize.workspace = true
+
+[features]
+# rustls backend for server-authenticated HTTPS: timestamp
+# authorities, EU trusted lists, validator APIs. Builds without a
+# C++ toolchain or a system OpenSSL.
+tls-rustls = ["dep:rustls"]

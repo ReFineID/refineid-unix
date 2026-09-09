@@ -1,0 +1,6 @@
+#!/bin/sh
+# Copyright 2026 Petri Koistinen. Licensed under the Apache License, Version 2.0.
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec "$REPO_ROOT/script/verify-push.sh"

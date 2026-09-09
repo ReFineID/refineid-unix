@@ -1,0 +1,43 @@
+[package]
+name = "refineid-lib-core"
+description = "FINEID smartcard protocol core -- ports, transport, PACE, secure messaging, eMRTD. Entities and use cases, no PKCS#11 awareness, no HTTP awareness, no GUI awareness."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Crypto stack for PACE + secure messaging.
+aes.workspace = true
+cbc.workspace = true
+cmac.workspace = true
+crypto-bigint.workspace = true
+subtle.workspace = true
+# Standards-based ASN.1 / X.690 DER parsing (re-exports `der`).
+spki.workspace = true
+# Compile-time dotted-decimal OID parser for the `oid::known` table.
+const-oid.workspace = true
+# Typed RSAPublicKey for reading the SPKI key bits' modulus length.
+sha1.workspace = true
+sha2.workspace = true
+# PACE ephemeral-key randomness (run_pace_step_3).
+getrandom.workspace = true
+# FlateDecode for the visible-signature free-spot search (sign::pades::spot).
+miniz_oxide.workspace = true
+hmac.workspace = true
+# Secret-material zeroize-on-drop -- `PinBytes` in `pin`.
+zeroize.workspace = true
+ring.workspace = true
+x25519-dalek.workspace = true
+chacha20poly1305.workspace = true
+x509-cert = { version = "0.3", default-features = false }
+
+[dev-dependencies]
+hex.workspace = true
+proptest.workspace = true

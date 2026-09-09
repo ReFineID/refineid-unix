@@ -1,0 +1,33 @@
+[package]
+name = "refineid-gui"
+description = "ReFineID desktop application: PIN management, portrait/signature, and document signing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# Forwarded to the client: the CAN-gated visible PDF stamp. OFF by
+# default; see refineid-client's feature of the same name.
+pdf-stamp = ["refineid-client/pdf-stamp"]
+
+[dependencies]
+refineid-client = { path = "../refineid-client", version = "26" }
+refineid-lib-core.workspace = true
+# Presence monitor: SCardGetStatusChange-driven card insert/remove
+# wake-ups instead of timed polling.
+refineid-lib-pcsc.workspace = true
+slint = { version = "1.17", default-features = false, features = ["accessibility", "backend-winit", "compat-1-2", "renderer-software"] }
+arboard = "3.6"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+pdfluent-jpeg2000 = { version = "0.3", default-features = false, features = ["image", "std"] }
+rfd = { version = "0.17", default-features = false, features = ["gtk3"] }
+
+[build-dependencies]
+slint-build = "1.17"

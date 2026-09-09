@@ -1,0 +1,39 @@
+#!/bin/sh
+# postinst for refineid - install-time hooks.
+# Per Debian Policy 6.5: handle every documented case argument
+# explicitly. cargo-deb auto-fills `#DEBHELPER#` with debhelper-
+# generated snippets if any.
+set -e
+
+case "$1" in
+    configure)
+        # Reload polkit so the new pcscd-access rule takes effect
+        # without a session restart.
+        if [ -d /run/systemd/system ]; then
+            if systemctl is-active --quiet polkit 2>/dev/null; then
+                systemctl reload polkit 2>/dev/null || true
+            fi
+            # pcscd is socket-activated on modern systemd; ensure
+            # the unit is enabled so it picks up requests.
+            systemctl enable --now pcscd.socket 2>/dev/null \
+                || systemctl enable --now pcscd 2>/dev/null \
+                || true
+        fi
+        # Trigger ldconfig so the cdylib's transitive shared-lib
+        # deps (libpcsclite, libssl) resolve cleanly when Firefox
+        # dlopens it.
+        if command -v ldconfig >/dev/null 2>&1; then
+            ldconfig
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

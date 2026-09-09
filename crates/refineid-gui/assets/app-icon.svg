@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Petri Koistinen
+
+  ReFineID application icon. Flattened from the layered
+  ReFineID-Apple AppIcon (blue field, white FINEID card, gold
+  contact chip) into one self-contained SVG for freedesktop
+  desktop-entry use.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f5aa6"/>
+      <stop offset="1" stop-color="#123f78"/>
+    </linearGradient>
+  </defs>
+  <!-- blue rounded-square field -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#field)"/>
+  <!-- the card body -->
+  <rect x="162" y="292" width="700" height="440" rx="45" fill="#FFFFFF"/>
+  <!-- gold contact chip, upper-left of the card -->
+  <g transform="translate(35,-75)">
+    <g transform="matrix(1,0,0,-1,0,1024)">
+      <defs>
+        <clipPath id="pad">
+          <rect x="240" y="520" width="150" height="120" rx="35"/>
+        </clipPath>
+      </defs>
+      <rect x="240" y="520" width="150" height="120" rx="35" fill="#D9B96B"/>
+      <g clip-path="url(#pad)" fill="none" stroke="#77602F" stroke-width="6">
+        <path d="M 240 610 H 390 M 240 550 H 390"/>
+        <path d="M 285 580 A 30 30 0 1 0 345 580 A 30 30 0 1 0 285 580"/>
+        <path d="M 315 640 V 610 M 315 550 V 520"/>
+        <path d="M 275 610 Q 285 640 305 640 M 355 610 Q 345 640 325 640 M 275 550 Q 285 520 305 520 M 355 550 Q 345 520 325 520"/>
+        <path d="M 240 580 H 285 M 345 580 H 390"/>
+        <rect x="240" y="520" width="150" height="120" rx="35"/>
+        <circle cx="315" cy="625" r="5" fill="#77602F" stroke="none"/>
+        <circle cx="315" cy="535" r="5" fill="#77602F" stroke="none"/>
+      </g>
+    </g>
+  </g>
+</svg>

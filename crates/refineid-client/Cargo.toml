@@ -1,0 +1,67 @@
+[package]
+name = "refineid-client"
+description = "ReFineID client library + CLI -- on-card metadata, eMRTD reads, PIN management, document signing, revocation checks."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "refineid"
+path = "src/bin/refineid.rs"
+
+[lints]
+workspace = true
+
+[features]
+# rustls by default, and nothing else. The default build stays free
+# of cmake, of a C++ toolchain and of a system OpenSSL -- ring builds
+# with cc alone. Without a TLS backend,
+# `card sign-document --timestamp eu-qualified` could not reach
+# authorities that publish only an HTTPS endpoint.
+default = ["tls-rustls"]
+# Server-authenticated HTTPS support for public infrastructure
+# fetches (TSAs, validator APIs). Requires a TLS
+# backend feature at runtime; without one the HTTPS path reports
+# that no backend was compiled.
+https = ["dep:refineid-lib-tls"]
+# rustls backend for the public-infrastructure fetches: timestamp
+# authorities and validator APIs.
+tls-rustls = ["https", "refineid-lib-tls/tls-rustls"]
+# Debug aid: read PINs from REFINEID_PIN1 / _PIN2 / _CURRENT_* /
+# _NEW_* environment variables instead of prompting. OFF by default
+# -- env-var PINs are visible in `ps` and inherited by child
+# processes. Kept behind this gate for CI / non-interactive
+# automation:
+#   cargo build --features pin-env-debug
+# The gate is compile-time, so a default build has no code path
+# that touches the variables at all.
+pin-env-debug = []
+# The visible PDF stamp: the CAN-gated mark carrying the holder's
+# name, SATU and card ink, drawn into the signed revision. OFF by
+# default -- an unstamped signature is invisible and alters no page.
+# The code stays compiled either way; the gate decides only whether a
+# mark is ever requested:
+#   cargo build --features pdf-stamp
+pdf-stamp = []
+
+[dependencies]
+refineid-lib-core.workspace = true
+refineid-lib-pcsc.workspace = true
+refineid-lib-tls = { workspace = true, optional = true }
+hex.workspace = true
+qrcodegen.workspace = true
+# OCSP CertID hashes (issuer Name + SPKI -> SHA-1 per RFC 6960).
+sha1.workspace = true
+# Locally validate DNSSEC before falling back once to the platform resolver
+# on unsigned or DNSSEC-unavailable networks.
+hickory-resolver.workspace = true
+tokio.workspace = true
+sha2.workspace = true
+# Echo-off PIN prompt for `card sign-auth`. PIN bytes never reach
+# argv, env, or any log line.
+rpassword.workspace = true
+zeroize.workspace = true

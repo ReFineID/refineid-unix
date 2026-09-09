@@ -1,0 +1,142 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/refineid-gui",
+    "crates/refineid-client",
+    "crates/refineid-lib-core",
+    "crates/refineid-lib-pcsc",
+    "crates/refineid-lib-tls",
+    "crates/refineid-pkcs11",
+]
+
+[workspace.package]
+# Cargo's three-component SemVer projection of the canonical
+# YY.M.D.B project version in VERSION. Rust code uses REFINEID_VERSION.
+version = "26.9.6"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Petri Koistinen"]
+repository = "https://github.com/ReFineID/ReFineID-Unix"
+# Oldest Rust a source build accepts. Tracks the rustc shipped by the
+# platforms we package for (NixOS 26.05 ships 1.95).
+rust-version = "1.95"
+
+[workspace.dependencies]
+# Workspace-internal crates. Version "26" matches any 26.x.y
+# (CalVer year 26); members refer to these via
+# `<crate>.workspace = true`. No wildcards.
+refineid-lib-core = { path = "crates/refineid-lib-core", version = "26" }
+refineid-lib-pcsc = { path = "crates/refineid-lib-pcsc", version = "26" }
+refineid-lib-tls = { path = "crates/refineid-lib-tls", version = "26" }
+
+# rustls backend for server-authenticated HTTPS (TSA calls, trusted
+# lists, validator APIs). `ring` rather than the default aws-lc-rs:
+# ring builds with cc alone where aws-lc-rs wants cmake, so the build
+# needs neither a C++ toolchain nor a system OpenSSL.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+
+# SHA-256 digests; HMAC; hex encoding for diagnostic output.
+sha2 = "0.11"
+hmac = "0.13"
+hex = "0.4"
+ring = { version = "0.17", default-features = false, features = ["alloc", "std"] }
+x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+qrcodegen = "1.8"
+# Property-based testing (dev-only): falsification harness for the
+# Uri parser -- idempotence and total no-panic over generated inputs.
+proptest = "1"
+# SHA-1 for OCSP CertID hashes (RFC 6960 default + MUST-support
+# digest). Plain hash, no security claim on the algorithm itself
+# -- responders match on the SHA-1 hash and we compare back.
+sha1 = "0.11"
+
+# DNSSEC-first resolution for certificate and timestamp endpoints. Hickory
+# performs local validation against the bundled root trust anchor; Tokio is
+# used only by a short-lived current-thread runtime around each attempt.
+hickory-resolver = { version = "0.26.1", default-features = false, features = ["dnssec-ring", "system-config", "tokio"] }
+tokio = { version = "1", default-features = false, features = ["net", "rt", "time"] }
+
+# Random generation for session-local secrets.
+getrandom = "0.4"
+
+# FlateDecode for reading a signed page's content streams, so the visible
+# signature mark can avoid what is already printed. Inflate only; nothing
+# here writes compressed data. Already in-tree transitively through
+# `image`'s PNG support.
+miniz_oxide = "0.8"
+
+# Crypto stack for PACE + secure messaging on the FINEID card.
+aes = "0.9"
+cbc = "0.2"
+cmac = "0.8"
+crypto-bigint = { version = "0.7", features = ["alloc", "zeroize"] }
+subtle = "2"
+
+# Standards-based ASN.1 / X.690 DER foundation (RustCrypto formats
+# crates). DER-canonical by construction; re-exports `der`.
+spki = "0.8"
+# Compile-time OID parser: `ObjectIdentifier::new_unwrap("2.16.840...")`
+# backs the typed `oid::known` table from dotted-decimal strings, so no
+# OID is transcribed as raw hex.
+const-oid = { version = "0.10", default-features = false }
+
+# Secret-material zeroize-on-drop. Used by `pin::PinBytes` to keep
+# verified PIN material out of stack / heap residue.
+zeroize = { version = "1", features = ["zeroize_derive"] }
+
+# Echo-off PIN prompt for the CLI sign path. PIN bytes never hit
+# argv, env, or any log.
+rpassword = "7"
+
+# PC/SC adapter for the desktop card backend.
+pcsc = "2.9"
+
+[workspace.lints.rust]
+meta_variable_misuse = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+single_use_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+
+[workspace.lints.rustdoc]
+bare_urls = "deny"
+broken_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+invalid_rust_codeblocks = "deny"
+missing_crate_level_docs = "deny"
+private_intra_doc_links = "deny"
+redundant_explicit_links = "deny"
+
+# Release-profile hardening.
+#
+# `panic = "abort"` applies to the whole workspace (a profile setting,
+# not a per-package one). With it, a panic in the PKCS#11 cdylib cannot
+# unwind across the `extern "C"` boundary -- it aborts instead. To keep
+# a consuming host (Firefox/NSS) alive, every FFI entry point that runs
+# real work wraps its body in `std::panic::catch_unwind` and maps a
+# caught panic to a status code.
+[profile.release]
+opt-level = 3
+lto = "thin"                 # cross-crate optimisation; fat LTO's memory peak OOMs 8 GB machines
+codegen-units = 1            # one unit per crate: reproducibility + better optimisation
+strip = "symbols"            # strip debug symbols from the final binary
+overflow-checks = true       # runtime overflow checks (off by default in release)
+panic = "abort"              # no unwinding; smaller binary, simpler crash model
+debug = false                # no debug info in release binary
+
+[workspace.lints.clippy]
+# https://rust-lang.github.io/rust-clippy/master/index.html
+enum_glob_use = "deny"
+unwrap_used = "deny"
+allow_attributes_without_reason = "deny"
+chunks_exact_to_as_chunks = "allow"
+

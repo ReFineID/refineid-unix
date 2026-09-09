@@ -1,0 +1,12 @@
+# Workspace-level clippy configuration.
+#
+# Citations and rationale for each setting live in
+# `doc/reference.md -> code style and engineering practice`.
+
+# `clippy::absolute_paths` -- the default threshold is 2
+# segments, which clippy's own PR #11003 describes as
+# "pretty strict." 3 segments matches the common `std::sync::Arc`
+# / `core::fmt::Formatter` shape that is genuinely idiomatic
+# inline. 4+ segment paths are caught and should be replaced
+# with `use` declarations.
+absolute-paths-max-segments = 3

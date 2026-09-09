@@ -1,0 +1,15 @@
+// Allow any active local-session user to access pcscd
+// (smartcard reader) without an extra polkit prompt.
+//
+// Installed by the `refineid` Debian package. Active local
+// session = user logged in on this seat (console / Wayland / X
+// / SSH-with-systemd-user). Remote inactive sessions still
+// require explicit auth.
+
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.debian.pcsc-lite.access_pcsc" ||
+         action.id == "org.debian.pcsc-lite.access_card") &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

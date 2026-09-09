@@ -1,0 +1,966 @@
+import {
+    Button,
+    ComboBox,
+    HorizontalBox,
+    LineEdit,
+    ScrollView,
+    Spinner,
+    VerticalBox,
+} from "std-widgets.slint";
+
+export component RefineIdWindow inherits Window {
+    in-out property <string> window-title: "ReFineID";
+    title: root.window-title;
+    preferred-width: 900px;
+    preferred-height: 650px;
+    min-width: 900px;
+    max-width: 900px;
+    min-height: 650px;
+    max-height: 650px;
+
+    in-out property <string> status-text: "Insert a FINEID card.";
+    in-out property <string> person-name: "";
+    in-out property <string> reader-name: "";
+    in-out property <string> pin1-status: "";
+    in-out property <string> pin2-status: "";
+    in-out property <string> puk-status: "";
+    in-out property <string> pin1-change-result: "";
+    in-out property <string> pin2-change-result: "";
+    in-out property <string> activation-result: "";
+    in-out property <string> reactivation-result: "";
+    in-out property <string> can-text: "";
+    in-out property <image> portrait;
+    in-out property <image> signature;
+    in-out property <bool> busy: false;
+    in-out property <bool> card-present: false;
+    in-out property <int> selected-view: 0;
+    in-out property <int> selected-card: 0;
+    in-out property <[string]> card-tabs: [];
+    in-out property <bool> portrait-available: false;
+    in-out property <bool> signature-available: false;
+    in-out property <bool> signature-supported: false;
+    in-out property <bool> pin1-change-available: false;
+    in-out property <bool> pin2-change-available: false;
+    in-out property <bool> activation-available: false;
+    in-out property <bool> legacy-activation: false;
+    in-out property <bool> pin1-unblock-available: false;
+    in-out property <bool> pin2-unblock-available: false;
+    in-out property <bool> unblock-uses-activation-code: false;
+    in-out property <int> security-operation: 0;
+    in-out property <string> activation-code: "";
+    in-out property <string> activation-pin1: "";
+    in-out property <string> activation-pin2: "";
+    in-out property <string> activation-pin1-confirm: "";
+    in-out property <string> activation-pin2-confirm: "";
+    in-out property <string> current-pin1: "";
+    in-out property <string> new-pin1: "";
+    in-out property <string> new-pin1-confirm: "";
+    in-out property <string> current-pin2: "";
+    in-out property <string> new-pin2: "";
+    in-out property <string> new-pin2-confirm: "";
+    in-out property <string> puk-code: "";
+    in-out property <string> replacement-pin1: "";
+    in-out property <string> replacement-pin2: "";
+    in-out property <string> replacement-pin1-confirm: "";
+    in-out property <string> replacement-pin2-confirm: "";
+    in-out property <string> replacement-pin1-error: "";
+    in-out property <string> replacement-pin2-error: "";
+    in-out property <bool> unblock-pin1-ready: false;
+    in-out property <bool> unblock-pin2-ready: false;
+    // Every document waiting, by file name, in the order it will be
+    // carried. A name and a count would name one file and hide the
+    // rest, leaving a wrong file in the set impossible to see and
+    // impossible to take out without starting the selection again.
+    in-out property <[string]> pdf-documents: [];
+    in-out property <string> pdf-pin2: "";
+    in-out property <string> pdf-sign-result: "";
+    in-out property <int> sign-operation: 0;
+    // 0 = PAdES inside the PDF, 1 = ASiC-E container beside it.
+    in-out property <int> sign-format: 0;
+    // A non-PDF document has no inside to sign: the container is the
+    // only shape, and the choice is shown locked rather than hidden.
+    in-out property <bool> sign-format-locked: false;
+    in-out property <int> timestamp-scheme: 1;
+    in-out property <string> timestamp-host-path: "timestamp.sectigo.com/qualified";
+    in-out property <string> timestamp-username: "";
+    in-out property <string> timestamp-password: "";
+    in-out property <bool> pairing-active: false;
+    in-out property <string> pairing-code: "";
+    in-out property <string> pairing-status: "Waiting for phone...";
+
+    callback start-pairing();
+    callback cancel-pairing();
+    callback refresh-card();
+    callback select-card(index: int);
+    callback load-images();
+    callback can-text-edited(value: string);
+    callback pin-input-edited(value: string, field: int);
+    callback puk-code-edited(value: string);
+    callback reactivation-inputs-edited();
+    callback security-operation-selected(operation: int);
+    callback sign-operation-selected(operation: int);
+    callback view-selected(view: int);
+    callback copy-portrait();
+    callback copy-signature();
+    callback save-portrait();
+    callback save-signature();
+    callback activate-card();
+    callback change-pin1();
+    callback change-pin2();
+    callback unblock-pin1();
+    callback unblock-pin2();
+    callback choose-pdf();
+    callback remove-pdf-document(index: int);
+    callback clear-pdf-documents();
+    callback sign-pdf();
+
+    VerticalBox {
+        padding: 0px;
+        spacing: 12px;
+
+        HorizontalBox {
+            vertical-stretch: 0;
+            VerticalBox {
+                vertical-stretch: 0;
+                spacing: 4px;
+                Text {
+                    text: "ReFineID";
+                    font-size: 26px;
+                    font-weight: 700;
+                }
+
+                if !root.card-present && !root.pairing-active: Text {
+                    text: "Insert card to reader or pair a mobile device.";
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            Spinner {
+                visible: root.busy;
+            }
+
+            Button {
+                text: "Pair Mobile";
+                height: 36px;
+                vertical-stretch: 0;
+                enabled: !root.busy && !root.pairing-active;
+                clicked => { root.start-pairing(); }
+            }
+
+            Button {
+                text: "Refresh";
+                height: 36px;
+                vertical-stretch: 0;
+                enabled: !root.busy;
+                clicked => { root.refresh-card(); }
+            }
+        }
+
+        if root.pairing-active: Rectangle {
+            background: #f4f6f8;
+            border-width: 1px;
+            border-color: #2b5c8f;
+            border-radius: 8px;
+            vertical-stretch: 0;
+
+            VerticalBox {
+                padding: 16px;
+                spacing: 10px;
+                HorizontalBox {
+                    Text {
+                        text: "Pair Mobile Device (iPhone / Android)";
+                        font-size: 18px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Button {
+                        text: "Cancel";
+                        height: 30px;
+                        clicked => { root.cancel-pairing(); }
+                    }
+                }
+                Text {
+                    text: "Enter this 6-digit pairing code in the ReFineID app on your phone:";
+                    font-size: 14px;
+                }
+                Rectangle {
+                    background: #ffffff;
+                    border-width: 1px;
+                    border-color: #cccccc;
+                    border-radius: 6px;
+                    height: 52px;
+                    Text {
+                        text: root.pairing-code;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Spinner { visible: true; width: 16px; height: 16px; }
+                    Text {
+                        text: root.pairing-status;
+                        vertical-alignment: center;
+                        font-size: 13px;
+                    }
+                }
+            }
+        }
+
+        if root.card-present: VerticalBox {
+            vertical-stretch: 0;
+            spacing: 6px;
+            for card[index] in root.card-tabs: Rectangle {
+                height: 36px;
+                vertical-stretch: 0;
+                border-width: index == root.selected-card ? 2px : 1px;
+                border-color: index == root.selected-card ? #000000 : #a0a0a0;
+                Text {
+                    text: card;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    font-weight: index == root.selected-card ? 700 : 400;
+                }
+
+                TouchArea {
+                    enabled: !root.busy && index != root.selected-card;
+                    clicked => { root.select-card(index); }
+                }
+            }
+        }
+
+        if root.card-present: HorizontalBox {
+            vertical-stretch: 0;
+            spacing: 8px;
+            Button {
+                text: "Sign PDF";
+                height: 36px;
+                vertical-stretch: 0;
+                primary: root.selected-view == 0;
+                enabled: !root.busy;
+                clicked => { root.selected-view = 0; root.view-selected(0); }
+            }
+
+            Button {
+                text: root.signature-supported ? "Portrait & Signature" : "Portrait";
+                height: 36px;
+                vertical-stretch: 0;
+                primary: root.selected-view == 1;
+                enabled: !root.busy;
+                clicked => { root.selected-view = 1; root.view-selected(1); }
+            }
+
+            Button {
+                text: "PINs";
+                height: 36px;
+                vertical-stretch: 0;
+                primary: root.selected-view == 2;
+                enabled: !root.busy;
+                clicked => { root.selected-view = 2; root.view-selected(2); }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+
+        if root.card-present && root.selected-view == 1: VerticalBox {
+            vertical-stretch: 0;
+            spacing: 12px;
+            if !root.portrait-available && !root.signature-available: HorizontalBox {
+                spacing: 8px;
+                Text {
+                    text: "Card Access Number visible on card";
+                    vertical-alignment: center;
+                }
+
+                LineEdit {
+                    text <=> root.can-text;
+                    enabled: root.card-present;
+                    input-type: number;
+                    placeholder-text: "6-digit CAN";
+                    preferred-width: 150px;
+                    edited => { root.can-text-edited(self.text); }
+                }
+
+                Button {
+                    text: "Load";
+                    height: 36px;
+                    vertical-stretch: 0;
+                    enabled: root.card-present && !root.busy;
+                    clicked => { root.load-images(); }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            if !root.portrait-available && !root.signature-available && root.status-text != "": Text {
+                text: root.status-text;
+                wrap: word-wrap;
+            }
+
+            HorizontalBox {
+                spacing: 16px;
+                if root.portrait-available: VerticalBox {
+                    spacing: 8px;
+                    Rectangle {
+                        clip: true;
+                        preferred-height: 330px;
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: root.portrait;
+                            image-fit: contain;
+                        }
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        Button {
+                            text: "Copy";
+                            clicked => { root.copy-portrait(); }
+                        }
+
+                        Button {
+                            text: "Save...";
+                            clicked => { root.save-portrait(); }
+                        }
+                    }
+                }
+                if root.signature-available: VerticalBox {
+                    spacing: 8px;
+                    Rectangle {
+                        clip: true;
+                        preferred-height: 330px;
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: root.signature;
+                            image-fit: contain;
+                        }
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        Button {
+                            text: "Copy";
+                            clicked => { root.copy-signature(); }
+                        }
+
+                        Button {
+                            text: "Save...";
+                            clicked => { root.save-signature(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        if root.card-present && root.selected-view == 2: VerticalBox {
+            vertical-stretch: 0;
+            VerticalBox {
+                vertical-stretch: 0;
+                spacing: 10px;
+                HorizontalBox {
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    if root.activation-available: Button {
+                        text: "Activate Card";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        primary: root.security-operation == 0;
+                        enabled: !root.busy;
+                        clicked => { root.security-operation = 0; root.security-operation-selected(0); }
+                    }
+                    if root.pin1-change-available: Button {
+                        text: "Change Authentication PIN1";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        primary: root.security-operation == 1;
+                        enabled: !root.busy;
+                        clicked => { root.security-operation = 1; root.security-operation-selected(1); }
+                    }
+                    if root.pin1-unblock-available: Button {
+                        text: "Change Authentication PIN1";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        primary: root.security-operation == 3;
+                        enabled: !root.busy;
+                        clicked => { root.security-operation = 3; root.security-operation-selected(3); }
+                    }
+                    if root.pin2-change-available: Button {
+                        text: "Change Sign PIN2";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        primary: root.security-operation == 2;
+                        enabled: !root.busy;
+                        clicked => { root.security-operation = 2; root.security-operation-selected(2); }
+                    }
+                    if root.pin2-unblock-available: Button {
+                        text: "Change Sign PIN2";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        primary: root.security-operation == 4;
+                        enabled: !root.busy;
+                        clicked => { root.security-operation = 4; root.security-operation-selected(4); }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                if root.status-text != "": Text {
+                    text: root.status-text;
+                    wrap: word-wrap;
+                }
+
+                if root.activation-available && root.security-operation == 0: VerticalBox {
+                    vertical-stretch: 0;
+                    spacing: 6px;
+                    Text {
+                        text: "Factory activation initializes PIN1 and PIN2 using two separate card commands.";
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "PIN1: " + root.pin1-status + "    PIN2: " + root.pin2-status + "    PUK: " + root.puk-status;
+                        wrap: word-wrap;
+                    }
+                    HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.activation-code;
+                            input-type: number;
+                            placeholder-text: root.legacy-activation ? "8-digit activation code" : "7-digit activation code";
+                            preferred-width: 180px;
+                            edited => { root.pin-input-edited(self.text, 0); }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.activation-pin1;
+                            input-type: password;
+                            placeholder-text: "Enter PIN1";
+                            edited => { root.pin-input-edited(self.text, 1); }
+                        }
+
+                        LineEdit {
+                            text <=> root.activation-pin1-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN1";
+                            edited => { root.pin-input-edited(self.text, 2); }
+                        }
+                    }
+
+                    Text {
+                        text: root.activation-pin1-confirm != "" && root.activation-pin1 != root.activation-pin1-confirm ? "PIN1 entries do not match" : "";
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.activation-pin2;
+                            input-type: password;
+                            placeholder-text: "Enter PIN2";
+                            edited => { root.pin-input-edited(self.text, 3); }
+                        }
+
+                        LineEdit {
+                            text <=> root.activation-pin2-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN2";
+                            edited => { root.pin-input-edited(self.text, 4); }
+                        }
+
+                        Button {
+                            text: "Activate";
+                            enabled: root.card-present && !root.busy && root.activation-pin1 != "" && root.activation-pin2 != "" && root.activation-pin1 == root.activation-pin1-confirm && root.activation-pin2 == root.activation-pin2-confirm;
+                            clicked => { root.activate-card(); }
+                        }
+                    }
+
+                    Text {
+                        text: root.activation-pin2-confirm != "" && root.activation-pin2 != root.activation-pin2-confirm ? "PIN2 entries do not match" : "";
+                    }
+
+                    Text {
+                        text: root.activation-result;
+                        wrap: word-wrap;
+                    }
+                }
+
+                if root.pin1-change-available && root.security-operation == 1: VerticalBox {
+                    vertical-stretch: 0;
+                    spacing: 6px;
+                    Text {
+                        text: root.pin1-status;
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.current-pin1;
+                            input-type: password;
+                            placeholder-text: "Current PIN1";
+                            edited => { root.pin-input-edited(self.text, 5); }
+                        }
+
+                        LineEdit {
+                            text <=> root.new-pin1;
+                            input-type: password;
+                            placeholder-text: "New PIN1";
+                            edited => { root.pin-input-edited(self.text, 6); }
+                        }
+
+                        LineEdit {
+                            text <=> root.new-pin1-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN1";
+                            edited => { root.pin-input-edited(self.text, 7); }
+                        }
+
+                        Button {
+                            text: "Change PIN1";
+                            height: 36px;
+                            vertical-stretch: 0;
+                            enabled: root.card-present && !root.busy && root.new-pin1 != "" && root.new-pin1 == root.new-pin1-confirm;
+                            clicked => { root.change-pin1(); }
+                        }
+                    }
+
+                    Text {
+                        text: root.new-pin1-confirm != "" && root.new-pin1 != root.new-pin1-confirm ? "PIN1 entries do not match" : "";
+                    }
+
+                    Text {
+                        text: root.pin1-change-result;
+                    }
+                }
+
+                if root.pin2-change-available && root.security-operation == 2: VerticalBox {
+                    vertical-stretch: 0;
+                    spacing: 6px;
+                    Text {
+                        text: root.pin2-status;
+                    }
+
+                    HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> root.current-pin2;
+                            input-type: password;
+                            placeholder-text: "Current PIN2";
+                            edited => { root.pin-input-edited(self.text, 8); }
+                        }
+
+                        LineEdit {
+                            text <=> root.new-pin2;
+                            input-type: password;
+                            placeholder-text: "New PIN2";
+                            edited => { root.pin-input-edited(self.text, 9); }
+                        }
+
+                        LineEdit {
+                            text <=> root.new-pin2-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN2";
+                            edited => { root.pin-input-edited(self.text, 10); }
+                        }
+
+                        Button {
+                            text: "Change PIN2";
+                            height: 36px;
+                            vertical-stretch: 0;
+                            enabled: root.card-present && !root.busy && root.new-pin2 != "" && root.new-pin2 == root.new-pin2-confirm;
+                            clicked => { root.change-pin2(); }
+                        }
+                    }
+
+                    Text {
+                        text: root.new-pin2-confirm != "" && root.new-pin2 != root.new-pin2-confirm ? "PIN2 entries do not match" : "";
+                    }
+
+                    Text {
+                        text: root.pin2-change-result;
+                    }
+                }
+
+                if (root.pin1-unblock-available && root.security-operation == 3) || (root.pin2-unblock-available && root.security-operation == 4): VerticalBox {
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    Text {
+                        text: root.security-operation == 3
+                            ? "Authentication PIN1 is locked. It can only be replaced using the recovery code. PIN2 will not be changed."
+                            : "Sign PIN2 is locked. It can only be replaced using the recovery code. PIN1 will not be changed.";
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: "PUK: " + root.puk-status;
+                        wrap: word-wrap;
+                    }
+                    HorizontalBox {
+                        spacing: 8px;
+                        VerticalBox {
+                            spacing: 4px;
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                            LineEdit {
+                                text <=> root.puk-code;
+                                input-type: password;
+                                placeholder-text: root.unblock-uses-activation-code ? "8-digit activation code" : "7 or 8-digit PUK";
+                                edited => { root.puk-code-edited(self.text); root.reactivation-inputs-edited(); }
+                            }
+
+                            if root.unblock-uses-activation-code: Text {
+                                text: "The 8-digit activation code from the letter is reusable.";
+                                font-italic: true;
+                                wrap: word-wrap;
+                            }
+                        }
+
+                        Rectangle {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle {
+                            preferred-width: 110px;
+                            vertical-stretch: 0;
+                        }
+                    }
+
+                    if root.security-operation == 3: HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                            text <=> root.replacement-pin1;
+                            input-type: password;
+                            placeholder-text: "New PIN1";
+                            edited => { root.pin-input-edited(self.text, 11); root.reactivation-inputs-edited(); }
+                        }
+
+                        LineEdit {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                            text <=> root.replacement-pin1-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN1";
+                            edited => { root.pin-input-edited(self.text, 12); root.reactivation-inputs-edited(); }
+                        }
+
+                        Button {
+                            text: "Unblock PIN1";
+                            enabled: root.card-present && !root.busy && root.unblock-pin1-ready;
+                            clicked => { root.unblock-pin1(); }
+                        }
+                    }
+
+                    if root.security-operation == 3: HorizontalBox {
+                        spacing: 8px;
+                        Text {
+                            text: root.replacement-pin1-confirm != "" && root.replacement-pin1 != root.replacement-pin1-confirm ? "PIN1 entries do not match" : root.replacement-pin1-error;
+                            wrap: word-wrap;
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle {
+                            preferred-width: 110px;
+                            vertical-stretch: 0;
+                        }
+                    }
+
+                    if root.security-operation == 4: HorizontalBox {
+                        spacing: 8px;
+                        LineEdit {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                            text <=> root.replacement-pin2;
+                            input-type: password;
+                            placeholder-text: "New PIN2";
+                            edited => { root.pin-input-edited(self.text, 13); root.reactivation-inputs-edited(); }
+                        }
+
+                        LineEdit {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                            text <=> root.replacement-pin2-confirm;
+                            input-type: password;
+                            placeholder-text: "Confirm PIN2";
+                            edited => { root.pin-input-edited(self.text, 14); root.reactivation-inputs-edited(); }
+                        }
+
+                        Button {
+                            text: "Unblock PIN2";
+                            enabled: root.card-present && !root.busy && root.unblock-pin2-ready;
+                            clicked => { root.unblock-pin2(); }
+                        }
+                    }
+
+                    if root.security-operation == 4: HorizontalBox {
+                        spacing: 8px;
+                        Text {
+                            text: root.replacement-pin2-confirm != "" && root.replacement-pin2 != root.replacement-pin2-confirm ? "PIN2 entries do not match" : root.replacement-pin2-error;
+                            wrap: word-wrap;
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle {
+                            preferred-width: 377px;
+                            horizontal-stretch: 0;
+                        }
+
+                        Rectangle {
+                            preferred-width: 110px;
+                            vertical-stretch: 0;
+                        }
+                    }
+
+                    Text {
+                        text: root.reactivation-result;
+                        wrap: word-wrap;
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+            }
+        }
+
+        if root.card-present && root.selected-view == 0: VerticalBox {
+            vertical-stretch: 0;
+            spacing: 12px;
+
+            HorizontalBox {
+                height: 36px;
+                vertical-stretch: 0;
+                spacing: 8px;
+                Button {
+                    text: "Sign";
+                    height: 36px;
+                    vertical-stretch: 0;
+                    primary: root.sign-operation == 0;
+                    enabled: !root.busy;
+                    clicked => { root.sign-operation = 0; root.sign-operation-selected(0); }
+                }
+
+                Button {
+                    text: "Timestamp";
+                    height: 36px;
+                    vertical-stretch: 0;
+                    primary: root.sign-operation == 1;
+                    enabled: !root.busy;
+                    clicked => { root.sign-operation = 1; root.sign-operation-selected(1); }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+
+            if root.sign-operation == 0: VerticalBox {
+                vertical-stretch: 0;
+                spacing: 12px;
+
+                HorizontalBox {
+                    height: 36px;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    Button {
+                        text: root.pdf-documents.length == 0 ? "Choose documents..." : "Add documents...";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        enabled: !root.busy;
+                        clicked => { root.choose-pdf(); }
+                    }
+                    Button {
+                        text: "Clear";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        visible: root.pdf-documents.length > 0;
+                        enabled: !root.busy;
+                        clicked => { root.clear-pdf-documents(); }
+                    }
+                    // Nothing is said about a chosen set: the rows are
+                    // the count and the format control is the shape.
+                    Text {
+                        text: root.pdf-documents.length == 0 ? "No documents selected" : "";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                // Every chosen document, each with its own way out: a
+                // set is corrected by taking one file out of it, not by
+                // clearing it and choosing the rest again.
+                if root.pdf-documents.length > 0: ScrollView {
+                    height: 132px;
+                    vertical-stretch: 0;
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        for document[index] in root.pdf-documents: HorizontalBox {
+                            height: 30px;
+                            padding: 0px;
+                            spacing: 8px;
+                            Text {
+                                text: document;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Remove";
+                                height: 30px;
+                                vertical-stretch: 0;
+                                enabled: !root.busy;
+                                clicked => { root.remove-pdf-document(index); }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalBox {
+                    height: 36px;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    Text {
+                        text: "Format";
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        model: ["In the PDF (PAdES)", "Container (ASiC-E)"];
+                        current-index <=> root.sign-format;
+                        enabled: !root.busy && !root.sign-format-locked;
+                        preferred-width: 260px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                HorizontalBox {
+                    height: 36px;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    LineEdit {
+                        text <=> root.pdf-pin2;
+                        input-type: password;
+                        placeholder-text: "PIN2";
+                        preferred-width: 220px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                        edited => { root.pin-input-edited(self.text, 15); }
+                    }
+
+                    LineEdit {
+                        text <=> root.can-text;
+                        input-type: number;
+                        placeholder-text: "CAN (optional)";
+                        preferred-width: 220px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                        edited => { root.can-text-edited(self.text); }
+                    }
+
+                    Button {
+                        text: "Sign...";
+                        height: 36px;
+                        vertical-stretch: 0;
+                        enabled: !root.busy && root.pdf-documents.length > 0 && root.pdf-pin2.character-count >= 6 && root.pdf-pin2.character-count <= 12;
+                        clicked => { root.sign-pdf(); }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                Text {
+                    text: root.pdf-sign-result;
+                    wrap: word-wrap;
+                }
+            }
+
+            if root.sign-operation == 1: VerticalBox {
+                vertical-stretch: 0;
+                spacing: 12px;
+
+                HorizontalBox {
+                    height: 36px;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    ComboBox {
+                        model: ["HTTPS", "HTTP"];
+                        current-index <=> root.timestamp-scheme;
+                        preferred-width: 110px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                    }
+
+                    LineEdit {
+                        text <=> root.timestamp-host-path;
+                        placeholder-text: "Timestamp authority host/path";
+                        preferred-width: 420px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                HorizontalBox {
+                    height: 36px;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    LineEdit {
+                        text <=> root.timestamp-username;
+                        placeholder-text: "Timestamp username";
+                        preferred-width: 260px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                    }
+
+                    LineEdit {
+                        text <=> root.timestamp-password;
+                        input-type: password;
+                        placeholder-text: "Timestamp password";
+                        preferred-width: 260px;
+                        height: 36px;
+                        vertical-stretch: 0;
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+        }
+    }
+}
