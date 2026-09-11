@@ -16,7 +16,7 @@ version = "26.9.6"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Petri Koistinen"]
-repository = "https://github.com/ReFineID/ReFineID-Unix"
+repository = "https://github.com/refineid/refineid-unix"
 # Oldest Rust a source build accepts. Tracks the rustc shipped by the
 # platforms we package for (NixOS 26.05 ships 1.95).
 rust-version = "1.95"

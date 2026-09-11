@@ -27,7 +27,7 @@ the reproducible NixOS install are proven against real FINEID
 hardware; breadth of card-model coverage is still growing, and
 PIN-change stays off by default until validated on a 2026 ECC card.
 The macOS/iPadOS app lives in
-[ReFineID-Apple](https://github.com/ReFineID/ReFineID-Apple).
+[ReFineID-Apple](https://github.com/refineid/refineid-apple).
 
 ## Install
 
@@ -61,7 +61,7 @@ See [INSTALL](INSTALL) for full installation and uninstallation instructions.
 ## Maintainer
 
 Petri Koistinen <petri.koistinen@refineid.fi>. Issues and discussion:
-<https://github.com/ReFineID/ReFineID-Unix>.
+<https://github.com/refineid/refineid-unix>.
 
 ## License
 

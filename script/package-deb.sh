@@ -92,7 +92,7 @@ Architecture: ${ARCH}
 Maintainer: Petri Koistinen <petri.koistinen@refineid.fi>
 Depends: libc6, libpcsclite1, p11-kit
 Recommends: pcscd, libccid
-Homepage: https://github.com/ReFineID/ReFineID-Unix
+Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID PKCS#11 module for Finnish identity cards
  ReFineID PKCS#11 module enabling authentication, document signing, and
  card cryptography across web browsers (Firefox, Chrome), OpenSC, and
@@ -145,7 +145,7 @@ Architecture: ${ARCH}
 Maintainer: Petri Koistinen <petri.koistinen@refineid.fi>
 Depends: libc6, libpcsclite1
 Recommends: pcscd, libccid, refineid-pkcs11
-Homepage: https://github.com/ReFineID/ReFineID-Unix
+Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID command-line tool for Finnish identity cards
  ReFineID command-line interface for smart card status inspection, PIN verification
  and change, remote card pairing (RAPP), and authentication testing.
@@ -196,7 +196,7 @@ Architecture: ${ARCH}
 Maintainer: Petri Koistinen <petri.koistinen@refineid.fi>
 Depends: libc6, libpcsclite1, libgtk-3-0 | libgtk-3-0t64, libfontconfig1, libx11-6, libxcursor1, libxi6, libxrandr2, libxkbcommon0, refineid-cli (= ${VERSION})
 Recommends: refineid-pkcs11 (= ${VERSION})
-Homepage: https://github.com/ReFineID/ReFineID-Unix
+Homepage: https://github.com/refineid/refineid-unix
 Description: Graphical user interface for Finnish identity cards
  ReFineID graphical desktop application for PIN management, card portrait and
  signature inspection, document signing, and pairing management.
@@ -254,7 +254,7 @@ Architecture: ${ARCH}
 Maintainer: Petri Koistinen <petri.koistinen@refineid.fi>
 Depends: refineid-cli (>= ${VERSION}), refineid-pkcs11 (>= ${VERSION}), refineid-gui (>= ${VERSION})
 Recommends: pcscd, libccid, pcsc-tools
-Homepage: https://github.com/ReFineID/ReFineID-Unix
+Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID middleware for Finnish identity cards (metapackage)
  ReFineID is an open-source FINEID smart-card middleware for Finnish identity
  cards on Linux. This metapackage installs the command-line tool, PKCS#11 module,
