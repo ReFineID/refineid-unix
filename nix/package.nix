@@ -143,7 +143,7 @@ craneLib.buildPackage (
 
     meta = {
       description = "Open-source FINEID middleware: CLI, PKCS#11 module, and desktop GUI";
-      homepage = "https://github.com/ReFineID/ReFineID-Unix";
+      homepage = "https://github.com/refineid/refineid-unix";
       license = lib.licenses.asl20;
       platforms = lib.platforms.linux;
       mainProgram = "refineid";

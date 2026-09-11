@@ -120,7 +120,7 @@ In `/etc/nixos/configuration.nix`:
 { config, pkgs, ... }:
 let
   refineid-src = builtins.fetchTarball
-    "https://github.com/ReFineID/ReFineID-Unix/archive/main.tar.gz";
+    "https://github.com/refineid/refineid-unix/archive/main.tar.gz";
 in
 {
   imports = [
@@ -210,7 +210,7 @@ the section above, with the module at
 With flakes:
 
 ```sh
-nix build github:ReFineID/ReFineID-Unix
+nix build github:refineid/refineid-unix
 ./result/bin/refineid card          # full card readout
 ./result/bin/refineid-gui  # the GUI
 ```
@@ -218,8 +218,8 @@ nix build github:ReFineID/ReFineID-Unix
 From a clone, without flakes:
 
 ```sh
-git clone https://github.com/ReFineID/ReFineID-Unix.git
-cd ReFineID-Unix
+git clone https://github.com/refineid/refineid-unix.git
+cd refineid-unix
 nix-build
 ./result/bin/refineid card
 ```
