@@ -64,12 +64,10 @@ impl PinBytes {
             return Err(error);
         }
         let Ok(length) = u8::try_from(bytes.len()) else {
-            let got = bytes.len();
             bytes.zeroize();
             return Err(PinRoleError::WrongLength {
                 expected_min: Self::MIN_LENGTH,
                 expected_max: Self::MAX_LENGTH,
-                got,
             });
         };
         let mut storage = [0; Self::MAX_LENGTH];
@@ -116,7 +114,6 @@ impl<const N: usize> TryFrom<[u8; N]> for PinBytes {
             return Err(PinRoleError::WrongLength {
                 expected_min: Self::MIN_LENGTH,
                 expected_max: Self::MAX_LENGTH,
-                got: N,
             });
         };
         let mut storage = [0; Self::MAX_LENGTH];
@@ -150,9 +147,8 @@ impl core::fmt::Debug for PinBytes {
 /// Error returned by the role-tagged PIN newtype constructors.
 ///
 /// Not PIN-bearing: variants carry only structural diagnostics
-/// (length bounds, byte offset of a non-digit). Per Rule E1 in
-/// `doc/security/excellence-rules.md`, `Copy` is forbidden only
-/// on types that hold PIN / PUK / activation-PIN / CAN material
+/// (length bounds). Per Rule E1 in `doc/security/excellence-rules.md`,
+/// `Copy` is forbidden only on types that hold PIN / PUK / activation-PIN / CAN material
 /// in their fields; this error enum holds none of those.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinRoleError {
@@ -165,16 +161,9 @@ pub enum PinRoleError {
         expected_min: usize,
         /// Maximum length the role accepts. Tier 0 `usize`.
         expected_max: usize,
-        /// Length of the rejected input. Tier 0 `usize`.
-        got: usize,
     },
-    /// Input contained a non-ASCII-digit byte. `at` is the
-    /// zero-based offset of the offending byte.
-    NonDigit {
-        /// Byte index at which the offending value was found.
-        /// Tier 0 `usize`.
-        at: usize,
-    },
+    /// Input contained a non-ASCII-digit byte.
+    NonDigit,
 }
 
 impl core::fmt::Display for PinRoleError {
@@ -184,7 +173,6 @@ impl core::fmt::Display for PinRoleError {
             Self::WrongLength {
                 expected_min,
                 expected_max,
-                got: _,
             } => {
                 if expected_min == expected_max {
                     write!(
@@ -198,10 +186,7 @@ impl core::fmt::Display for PinRoleError {
                     )
                 }
             }
-            Self::NonDigit { at } => write!(
-                f,
-                "PIN code must be ASCII digits only; non-digit at offset {at}"
-            ),
+            Self::NonDigit => write!(f, "PIN code must be ASCII digits only"),
         }
     }
 }
@@ -216,11 +201,10 @@ fn validate_digits(bytes: &[u8], min: usize, max: usize) -> Result<(), PinRoleEr
         return Err(PinRoleError::WrongLength {
             expected_min: min,
             expected_max: max,
-            got: bytes.len(),
         });
     }
-    if let Some(at) = bytes.iter().position(|b| !b.is_ascii_digit()) {
-        return Err(PinRoleError::NonDigit { at });
+    if bytes.iter().any(|b| !b.is_ascii_digit()) {
+        return Err(PinRoleError::NonDigit);
     }
     Ok(())
 }
@@ -491,11 +475,17 @@ mod tests {
         ));
         assert!(matches!(
             PinBytes::try_from(*b"123"),
-            Err(PinRoleError::WrongLength { got: 3, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: PinBytes::MIN_LENGTH,
+                expected_max: PinBytes::MAX_LENGTH,
+            })
         ));
         assert!(matches!(
             PinBytes::try_from([b'1'; PinBytes::MAX_LENGTH + 1]),
-            Err(PinRoleError::WrongLength { got: 13, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: PinBytes::MIN_LENGTH,
+                expected_max: PinBytes::MAX_LENGTH,
+            })
         ));
     }
 
@@ -503,7 +493,7 @@ mod tests {
     fn rejects_non_digit_input() {
         assert!(matches!(
             PinBytes::try_from(*b"12a4"),
-            Err(PinRoleError::NonDigit { at: 2 })
+            Err(PinRoleError::NonDigit)
         ));
     }
 
@@ -533,11 +523,17 @@ mod tests {
         // PUK; the PUK is eight to twelve digits.
         assert!(matches!(
             Puk::new(pin(b"1234567")),
-            Err(PinRoleError::WrongLength { got: 7, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: Puk::MIN_LENGTH,
+                expected_max: Puk::MAX_LENGTH,
+            })
         ));
         assert!(matches!(
             Puk::new(pin(b"123456")),
-            Err(PinRoleError::WrongLength { got: 6, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: Puk::MIN_LENGTH,
+                expected_max: Puk::MAX_LENGTH,
+            })
         ));
     }
 
@@ -545,7 +541,7 @@ mod tests {
     fn pin_bytes_rejects_letter_before_puk_construction() {
         assert!(matches!(
             PinBytes::try_from(*b"1234567a"),
-            Err(PinRoleError::NonDigit { at: 7 })
+            Err(PinRoleError::NonDigit)
         ));
     }
 
@@ -560,7 +556,10 @@ mod tests {
     fn activation_pin_seven_rejects_eight_digits() {
         assert!(matches!(
             ActivationPinSeven::new(pin(b"12345678")),
-            Err(PinRoleError::WrongLength { got: 8, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: ActivationPinSeven::LENGTH,
+                expected_max: ActivationPinSeven::LENGTH,
+            })
         ));
     }
 
@@ -575,7 +574,10 @@ mod tests {
     fn activation_pin_eight_rejects_seven_digits() {
         assert!(matches!(
             ActivationPinEight::new(pin(b"1234567")),
-            Err(PinRoleError::WrongLength { got: 7, .. })
+            Err(PinRoleError::WrongLength {
+                expected_min: ActivationPinEight::LENGTH,
+                expected_max: ActivationPinEight::LENGTH,
+            })
         ));
     }
 
@@ -632,6 +634,57 @@ mod tests {
         assert_eq!(
             format!("{e:?}"),
             "ActivationCode::ActivationPinEight([redacted])"
+        );
+    }
+
+    #[test]
+    fn pin_role_error_debug_does_not_leak_candidate_length_or_offset() {
+        let err = validate_digits(b"12", PinBytes::MIN_LENGTH, PinBytes::MAX_LENGTH)
+            .expect_err("fixture is below minimum length");
+        let expected_debug = format!(
+            "WrongLength {{ expected_min: {}, expected_max: {} }}",
+            PinBytes::MIN_LENGTH,
+            PinBytes::MAX_LENGTH
+        );
+        assert_eq!(format!("{err:?}"), expected_debug);
+
+        let err_non_digit = validate_digits(b"12a4", PinBytes::MIN_LENGTH, PinBytes::MAX_LENGTH)
+            .expect_err("fixture contains a non-digit byte");
+        assert_eq!(format!("{err_non_digit:?}"), "NonDigit");
+    }
+
+    #[test]
+    fn pin_role_error_display_is_always_shape_only() {
+        let err_empty = validate_digits(b"", PinBytes::MIN_LENGTH, PinBytes::MAX_LENGTH)
+            .expect_err("fixture is empty");
+        assert_eq!(err_empty.to_string(), "PIN code cannot be empty");
+
+        let err_wrong_len = validate_digits(b"12", PinBytes::MIN_LENGTH, PinBytes::MAX_LENGTH)
+            .expect_err("fixture is below minimum length");
+        let expected_wrong_len = format!(
+            "PIN code wrong length: expected {}-{} digits",
+            PinBytes::MIN_LENGTH,
+            PinBytes::MAX_LENGTH
+        );
+        assert_eq!(err_wrong_len.to_string(), expected_wrong_len);
+
+        let err_exact_len = validate_digits(
+            b"12",
+            ActivationPinSeven::LENGTH,
+            ActivationPinSeven::LENGTH,
+        )
+        .expect_err("fixture is below exact length");
+        let expected_exact_len = format!(
+            "PIN code wrong length: expected exactly {} digits",
+            ActivationPinSeven::LENGTH
+        );
+        assert_eq!(err_exact_len.to_string(), expected_exact_len);
+
+        let err_non_digit = validate_digits(b"12a4", PinBytes::MIN_LENGTH, PinBytes::MAX_LENGTH)
+            .expect_err("fixture contains a non-digit byte");
+        assert_eq!(
+            err_non_digit.to_string(),
+            "PIN code must be ASCII digits only"
         );
     }
 }

@@ -863,7 +863,7 @@ unsafe extern "C" fn c_login(
 /// byte length and digit-ness are inspected here.
 const fn classify_pin_error(error: PinRoleError) -> CkRv {
     match error {
-        PinRoleError::NonDigit { .. } => CKR_PIN_INVALID,
+        PinRoleError::NonDigit => CKR_PIN_INVALID,
         PinRoleError::Empty | PinRoleError::WrongLength { .. } => CKR_PIN_LEN_RANGE,
     }
 }
