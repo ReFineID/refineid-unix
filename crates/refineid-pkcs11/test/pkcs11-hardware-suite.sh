@@ -72,7 +72,7 @@ CLI="${REFINEID_CLI:-$REPO_DIR/target/release/refineid}"
 [[ -n "$CLI" && -x "$CLI" ]] || { echo "ERROR: refineid CLI not found; set REFINEID_CLI" >&2; exit 3; }
 
 MOD="${REFINEID_PKCS11_LIB:-$REPO_DIR/target/release/librefineid_pkcs11.$LIBEXT}"
-[[ -f "$MOD" ]] || { echo "ERROR: module not built: $MOD (cargo build --release -p refineid-pkcs11)" >&2; exit 3; }
+[[ -f "$MOD" ]] || { echo "ERROR: module not built: $MOD (cargo build --release -p refineid-unix-pkcs11)" >&2; exit 3; }
 
 command -v pkcs11-tool >/dev/null || { echo "ERROR: pkcs11-tool missing (opensc)" >&2; exit 3; }
 command -v openssl >/dev/null || { echo "ERROR: openssl missing" >&2; exit 3; }

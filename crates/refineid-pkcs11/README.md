@@ -1,7 +1,8 @@
 # refineid-pkcs11
 
 A minimal, read-only, sign-only PKCS#11 v2.40 (cryptoki) module for FINEID cards.
-It builds as a C ABI shared library (`librefineid_pkcs11.so` on Linux, `.dylib` on macOS) plus an `rlib` for tests.
+It builds as a C ABI shared library (`librefineid_pkcs11.so` on Linux, `.dylib` on macOS).
+The cryptoki implementation is maintained in `refineid-core` (`refineid-pkcs11`); this crate packages the `cdylib` module and integration test rigs for Unix systems.
 
 Its single job is Firefox / NSS client-certificate TLS authentication:
 it exposes the card's authentication certificate and its private key, takes PIN1 through `C_Login`,
@@ -137,7 +138,11 @@ This README documents the file content only; it installs nothing.
 ## Build
 
 ```
-cargo build -p refineid-pkcs11
+cargo build --release -p refineid-unix-pkcs11
 ```
 
-The `cdylib` builds on both Linux and macOS; PC/SC access is cross-platform through `refineid-lib-pcsc`.
+or build the full workspace:
+
+```
+cargo build --release --workspace
+```

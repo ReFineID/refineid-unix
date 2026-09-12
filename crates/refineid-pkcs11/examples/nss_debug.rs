@@ -25,8 +25,8 @@
 //! Usage (needs a card in a reader; read-only unless flags given):
 //!
 //! ```text
-//! cargo run -p refineid-pkcs11 --example nss_debug [-- <module-path>]
-//! cargo run -p refineid-pkcs11 --example nss_debug -- --login --sign-probe
+//! cargo run -p refineid-unix-pkcs11 --example nss_debug [-- <module-path>]
+//! cargo run -p refineid-unix-pkcs11 --example nss_debug -- --login --sign-probe
 //! ```
 //!
 //! Without `<module-path>` the probe loads the freshly built cdylib
@@ -177,7 +177,7 @@ mod probe {
             Ok(candidate)
         } else {
             Err(format!(
-                "module not built: {} (cargo build -p refineid-pkcs11, or pass a module path)",
+                "module not built: {} (cargo build -p refineid-unix-pkcs11, or pass a module path)",
                 candidate.display()
             ))
         }

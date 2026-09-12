@@ -29,6 +29,7 @@ refineid-lib-pcsc = { path = "crates/refineid-lib-pcsc", version = "26" }
 refineid-lib-tls = { path = "crates/refineid-lib-tls", version = "26" }
 
 refineid-auth = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-pkcs11 = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
 
 # rustls backend for server-authenticated HTTPS (TSA calls, trusted
 # lists, validator APIs). `ring` rather than the default aws-lc-rs:
