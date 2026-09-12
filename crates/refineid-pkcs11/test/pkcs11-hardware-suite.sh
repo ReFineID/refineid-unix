@@ -32,7 +32,7 @@
 #                                `--features pin-change` and the CLI
 #                                with `--features pin-env-debug`.
 #   REFINEID_TEST_PIN1_TMP       temporary PIN1 for the change
-#                                cycle (default 4321).
+#                                cycle (required if pin-change enabled).
 #   REFINEID_SUITE_INTERACTIVE=1 (opt-in) run the PUK-unblock
 #                                phase. The CLI prompts for the PUK
 #                                on the terminal (never argv/env),
