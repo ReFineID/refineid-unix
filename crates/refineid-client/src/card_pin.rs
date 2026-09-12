@@ -37,7 +37,9 @@ use refineid_lib_core::backend::{
 };
 use refineid_lib_core::crypto::digest::Sha256;
 use refineid_lib_core::fineid_card::{CardClassificationError, FineidCardModel};
-use refineid_lib_core::pin::{ActivationCode, PinBytes, Puk};
+use refineid_lib_core::pin::{
+    ActivationCode, ActivationPinEight, ActivationPinSeven, PinBytes, Puk,
+};
 use refineid_lib_core::pin_retry_risk::PinRetryRisk;
 use refineid_lib_core::pkcs15::{
     CardGeneration, CertSlot, FineidReaderPick, classify_card_generation,
@@ -209,11 +211,11 @@ pub enum CardPinError {
     /// card generation and won't guess at activation-PIN length
     /// on the operator's behalf.
     UnknownCardGeneration,
-    /// `card activate` only: card data (either the auth-cert
-    /// chain or the EF.TokenInfo content) didn't validate
-    /// against our compile-time root pinning. The activation flow
-    /// refuses to send the secret activation PIN to unverified
-    /// hardware.
+    /// `card activate` only: the card's data couldn't be
+    /// authenticated against a pinned anchor. The activation
+    /// flow refuses to use untrusted card-side data (issuance
+    /// date, etc.) for type selection -- without a verified
+    /// chain anchor the data could be from a counterfeit card.
     CardDataUntrusted {
         /// Human-readable detail from
         /// `CardTrustAttestation::describe` explaining which
@@ -1501,17 +1503,19 @@ impl ActivateGuard {
             | (ActivationCode::Eight(_), CardGeneration::Older) => None,
             (_, CardGeneration::Unknown) => Some(CardPinError::UnknownCardGeneration),
             (ActivationCode::Seven(_), CardGeneration::Older) => {
-                Self::emit_length_mismatch(reader_label, generation, 8);
+                let expected = ActivationPinEight::LENGTH;
+                Self::emit_length_mismatch(reader_label, generation, expected);
                 Some(CardPinError::ActivationLengthMismatch {
                     generation,
-                    expected: 8,
+                    expected,
                 })
             }
             (ActivationCode::Eight(_), CardGeneration::Newer) => {
-                Self::emit_length_mismatch(reader_label, generation, 7);
+                let expected = ActivationPinSeven::LENGTH;
+                Self::emit_length_mismatch(reader_label, generation, expected);
                 Some(CardPinError::ActivationLengthMismatch {
                     generation,
-                    expected: 7,
+                    expected,
                 })
             }
         }
@@ -1669,11 +1673,12 @@ mod activate_tests {
     use refineid_lib_core::apdu::status_word::PinRetries;
 
     use super::{
-        ActivatePreflightOutcome, CardGeneration, ChangePinOutcome, PinStatus, UnblockOutcome,
-        activation_continues_after_pin1, card_manager_pin_change_available, change_to_unblock,
-        classify_preflight,
+        ActivatePreflightOutcome, CardGeneration, CardPinError, ChangePinOutcome, PinStatus,
+        UnblockOutcome, activation_continues_after_pin1, card_manager_pin_change_available,
+        change_to_unblock, classify_preflight,
     };
     use crate::test_util::{TestResult, check_true};
+    use refineid_lib_core::pin::ActivationPinSeven;
 
     #[test]
     fn card_manager_allows_three_attempts_but_reserves_two() -> TestResult {
@@ -1872,6 +1877,24 @@ mod activate_tests {
                 "failed PIN1 activation stops before PIN2",
             )?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn activation_length_mismatch_debug_and_display_do_not_leak_candidate_length() -> TestResult {
+        let err = CardPinError::ActivationLengthMismatch {
+            generation: CardGeneration::Newer,
+            expected: ActivationPinSeven::LENGTH,
+        };
+        let expected_debug = format!(
+            "ActivationLengthMismatch {{ generation: Newer, expected: {} }}",
+            ActivationPinSeven::LENGTH
+        );
+        check_true(format!("{err:?}") == expected_debug, "debug format")?;
+        check_true(
+            err.to_string().contains("Newer card expects 7 digits"),
+            "display format",
+        )?;
         Ok(())
     }
 }
