@@ -45,6 +45,8 @@
 //!   the embedded image rather than parsing the biometric
 //!   header proper.
 
+pub use refineid_emrtd::{EmrtdCardProfile, EmrtdOps};
+
 use crate::apdu::iso7816::{ReadBinaryByOffset, ReadBinaryBySfi, SelectByAidNoFci};
 use crate::apdu::primitives::Aid;
 use crate::apdu::status_word::StatusWord;

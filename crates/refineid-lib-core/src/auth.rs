@@ -37,6 +37,16 @@
 
 pub mod commands;
 
+pub use refineid_auth::{
+    ActivationCode, ActivationReport, ActivationScheme, CACHE_FINGERPRINT_KEY_LEN,
+    CACHE_FINGERPRINT_LEN, CachedPin, CardActivationNeeds, CredentialHealthReport,
+    CredentialInputError, CredentialRole, ManageOutcome, Pin1, Pin2, PinChangeRecord, PinManageOps,
+    PinRetryRisk, Puk, UnvalidatedSecret, classify_manage_sw,
+    pin1_status_permits_consumer_authentication, pin1_status_permits_reusable_cache,
+    pin2_status_permits_qualified_signature, read_pin_change_record,
+    read_puk_status_from_container,
+};
+
 use crate::apdu::iso7816::ApduClass;
 use crate::apdu::status_word::{PinRetries, StatusWord};
 use crate::pin::PinBytes;

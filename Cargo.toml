@@ -17,9 +17,8 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Petri Koistinen"]
 repository = "https://github.com/refineid/refineid-unix"
-# Oldest Rust a source build accepts. Tracks the rustc shipped by the
-# platforms we package for (NixOS 26.05 ships 1.95).
-rust-version = "1.95"
+# Oldest Rust a source build accepts. Aligned with refineid-core (1.97).
+rust-version = "1.97"
 
 [workspace.dependencies]
 # Workspace-internal crates. Version "26" matches any 26.x.y
@@ -28,6 +27,21 @@ rust-version = "1.95"
 refineid-lib-core = { path = "crates/refineid-lib-core", version = "26" }
 refineid-lib-pcsc = { path = "crates/refineid-lib-pcsc", version = "26" }
 refineid-lib-tls = { path = "crates/refineid-lib-tls", version = "26" }
+
+refineid-apdu = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-atr = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-auth = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-ber = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-cms = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-digest = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-emrtd = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-pace = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-pin-cache = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-pkcs15 = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-rapp = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-remote = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-sign = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
+refineid-x509 = { git = "https://github.com/refineid/refineid-core.git", branch = "main" }
 
 # rustls backend for server-authenticated HTTPS (TSA calls, trusted
 # lists, validator APIs). `ring` rather than the default aws-lc-rs:
