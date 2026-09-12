@@ -4635,7 +4635,7 @@ dependencies = [
 [[package]]
 name = "refineid-apdu"
 version = "26.9.12"
-source = "git+https://github.com/refineid/refineid-core.git?branch=main#91db1f326e956863d6f10db8df027b4dc6af822c"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#2e7dcfd46330f092f1bf5e15e0e3dacfe6c607ba"
 dependencies = [
  "zeroize",
 ]
@@ -4643,7 +4643,7 @@ dependencies = [
 [[package]]
 name = "refineid-auth"
 version = "26.9.12"
-source = "git+https://github.com/refineid/refineid-core.git?branch=main#91db1f326e956863d6f10db8df027b4dc6af822c"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#2e7dcfd46330f092f1bf5e15e0e3dacfe6c607ba"
 dependencies = [
  "hmac",
  "refineid-apdu",
