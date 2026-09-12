@@ -1,4 +1,4 @@
-# ReFineID Unix Makefile
+# RefineID Unix Makefile
 
 CARGO ?= cargo
 
@@ -7,7 +7,7 @@ CARGO ?= cargo
 default: build
 
 help:
-	@echo "ReFineID for Unix."
+	@echo "RefineID for Unix."
 	@echo "  make build      -> release build of the whole workspace"
 	@echo "  make check      -> build + test + clippy + fmt gate"
 	@echo "  make clean      -> remove build artifacts"

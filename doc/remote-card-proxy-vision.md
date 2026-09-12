@@ -1,22 +1,22 @@
-# ReFineID Remote Card Proxy & 6-Digit Pairing Architecture Vision
+# RefineID Remote Card Proxy & 6-Digit Pairing Architecture Vision
 
 - **Document Version**: `26.8.27.1`
 - **Protocol Version**: `26.8`
 - **Status**: Target Architecture & Design Vision
-- **Applies To**: `ReFineID-Unix` (Linux/BSD), `ReFineID-Apple` (iOS/macOS), `ReFineID-Android`
+- **Applies To**: `RefineID-Unix` (Linux/BSD), `RefineID-Apple` (iOS/macOS), `RefineID-Android`
 
 ---
 
 ## 1. Executive Summary
 
-The **ReFineID Remote Card Proxy** enables laptops and desktops (Linux, macOS) to perform high-assurance smartcard authentication (e.g. FINEID Citizen Identity, Suomi.fi, eIDAS services) using a smartphone (iPhone, Android) as a wireless NFC card reader proxy.
+The **RefineID Remote Card Proxy** enables laptops and desktops (Linux, macOS) to perform high-assurance smartcard authentication (e.g. FINEID Citizen Identity, Suomi.fi, eIDAS services) using a smartphone (iPhone, Android) as a wireless NFC card reader proxy.
 
 ### Core Tenets
 
 1. **No Hardware Card Readers Required on Laptops**: Modern laptops rarely have smartcard slots. Instead of requiring USB CCID dongles, the user taps their physical ID card against their phone's built-in NFC radio.
 2. **No QR Codes — Simple 6-Digit Numeric Pairing**: Pairing a desktop with a mobile device uses a clean 6-digit numeric pairing code (e.g. `482 915`) displayed on the desktop and entered on the mobile screen.
 3. **Strict Separation of Concerns**:
-   * **ReFineID Application / CLI**: Manages one-time pairing ceremonies, local vault persistence, and device lifecycle.
+   * **RefineID Application / CLI**: Manages one-time pairing ceremonies, local vault persistence, and device lifecycle.
    * **PKCS#11 / CryptoTokenKit Module**: In-process driver loaded into browsers (Firefox, Chrome, Safari). Headless, fast, and stateless: reads paired devices from the vault, exposes virtual card slots, and dispatches signature requests on demand.
 4. **Noise Cryptography Over Untrusted Transports**: End-to-end authenticated encryption (`Noise_XXpsk3` for pairing, `Noise_KK` for sessions) using Curve25519, ChaCha20-Poly1305, and SHA-256 over BLE L2CAP and Local TCP streams. The transport layer is treated as an untrusted wire.
 5. **Aggressive In-Memory Certificate Caching**: Certificates (leaf authentication certificate, issuing CA, root CA) are read once from the card and cached in the local vault and RAM to eliminate slow NFC roundtrips during routine browser browsing.
@@ -30,7 +30,7 @@ The **ReFineID Remote Card Proxy** enables laptops and desktops (Linux, macOS) t
 │                           DESKTOP / LAPTOP                              │
 │                                                                         │
 │  ┌───────────────────────────────┐     ┌─────────────────────────────┐  │
-│  │   ReFineID App / CLI          │     │    Web Browser (Firefox)    │  │
+│  │   RefineID App / CLI          │     │    Web Browser (Firefox)    │  │
 │  │   ($ refineid pair)           │     │    Loads librefineid_pkcs11 │  │
 │  └──────────────┬────────────────┘     └──────────────┬──────────────┘  │
 │                 │ One-time Pairing                    │ C_Sign / Login  │
@@ -48,7 +48,7 @@ The **ReFineID Remote Card Proxy** enables laptops and desktops (Linux, macOS) t
 │                           MOBILE PHONE (iOS / Android)                  │
 │                                                                         │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │   ReFineID Mobile App (RAPP Server)                               │  │
+│  │   RefineID Mobile App (RAPP Server)                               │  │
 │  │   1. Receives `BrowserAuthenticate` request                        │  │
 │  │   2. Displays prompt: "Authenticate to Suomi.fi? [Confirm]"        │  │
 │  │   3. Drives NFC session: prompts user to tap physical card         │  │
@@ -69,13 +69,13 @@ The **ReFineID Remote Card Proxy** enables laptops and desktops (Linux, macOS) t
 
 ### 3.1 Pairing Flow
 
-1. **Initiation**: User runs `refineid pair` (CLI) or clicks **"Pair New Mobile"** in the ReFineID Desktop GUI.
+1. **Initiation**: User runs `refineid pair` (CLI) or clicks **"Pair New Mobile"** in the RefineID Desktop GUI.
 2. **Discovery**:
-   * Desktop begins advertising the ReFineID service over **Bluetooth Low Energy (BLE)** and/or **local mDNS**.
+   * Desktop begins advertising the RefineID service over **Bluetooth Low Energy (BLE)** and/or **local mDNS**.
    * Desktop generates a cryptographically random 6-digit code:
      ```
      ========================================
-       ReFineID Device Pairing
+       RefineID Device Pairing
        Pairing Code:  4 8 2   9 1 5
      ========================================
      ```
@@ -101,7 +101,7 @@ Once paired, the user never needs to re-enter pairing codes.
 
 1. **Slot Enumeration**:
    * When Firefox opens, `librefineid_pkcs11.so` checks `RappDeviceVault`.
-   * Each active paired phone is exposed as a PKCS#11 slot (e.g. `Slot 1: iPhone 15 Pro (ReFineID Token)`).
+   * Each active paired phone is exposed as a PKCS#11 slot (e.g. `Slot 1: iPhone 15 Pro (RefineID Token)`).
 2. **Zero-Latency Attribute Lookups**:
    * NSS queries `CKA_VALUE`, `CKA_ISSUER`, `CKA_SUBJECT`, and CA trust anchors.
    * The PKCS#11 module answers directly from the in-memory cache without waking up the phone or card.

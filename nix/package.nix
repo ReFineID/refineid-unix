@@ -1,9 +1,9 @@
-# ReFineID package: the refineid CLI, the ReFineID GUI, and the
+# RefineID package: the refineid CLI, the RefineID GUI, and the
 # PKCS#11 module, built from this source tree with the Rust that
 # nixpkgs ships.
 #
 # Built with crane so the dependency graph compiles as its own
-# derivation: editing ReFineID source rebuilds only the workspace
+# derivation: editing RefineID source rebuilds only the workspace
 # crates, while the dependency build is reused from the local store
 # until Cargo.lock (or the toolchain) changes.
 {
@@ -72,7 +72,7 @@ let
 
   # Dependencies only: crane builds this from the manifests and
   # Cargo.lock with dummied-out workspace sources, so its hash -- and
-  # therefore the cached artifact -- survives ReFineID source edits.
+  # therefore the cached artifact -- survives RefineID source edits.
   # The version is pinned so a version stamp does not rotate the
   # cached derivation by name alone (the stamp still rebuilds it
   # through .cargo/config.toml, which the dependency build must see
@@ -121,7 +121,7 @@ craneLib.buildPackage (
       critical: no
       EOF
 
-      # Desktop entry + icon for the GUI. The visible name is "ReFineID";
+      # Desktop entry + icon for the GUI. The visible name is "RefineID";
       # the binary is refineid-gui so it does not collide with the
       # `refineid` CLI on PATH.
       mkdir -p $out/share/applications $out/share/icons/hicolor/scalable/apps
@@ -130,7 +130,7 @@ craneLib.buildPackage (
       cat > $out/share/applications/refineid.desktop <<EOF
       [Desktop Entry]
       Type=Application
-      Name=ReFineID
+      Name=RefineID
       GenericName=Identity card tool
       Comment=Finnish identity card: PIN management, portrait and signature, document signing
       Exec=$out/bin/refineid-gui

@@ -142,7 +142,7 @@ impl PairArgs {
         );
 
         println!("======================================================");
-        println!("              ReFineID Device Pairing                 ");
+        println!("              RefineID Device Pairing                 ");
         println!("======================================================");
         println!();
         println!("  PAIRING CODE:  {formatted_code}");
@@ -161,7 +161,7 @@ impl PairArgs {
                 return ExitCode::FAILURE;
             }
         } else {
-            println!("  1. Open ReFineID on your phone (iPhone / Android)");
+            println!("  1. Open RefineID on your phone (iPhone / Android)");
             println!("  2. Select \"Pair New Device\"");
             println!("  3. Enter the 6-digit code shown above");
         }
@@ -217,7 +217,7 @@ impl PairArgs {
         };
 
         let mut pair_record =
-            match pair_requester_over_stream(&mut stream, &offer_ctx, "ReFineID Linux", "Linux") {
+            match pair_requester_over_stream(&mut stream, &offer_ctx, "RefineID Linux", "Linux") {
                 Ok(rec) => rec,
                 Err(e) => {
                     eprintln!("Pairing failed: {e}");
@@ -304,12 +304,12 @@ impl PairArgs {
         );
 
         println!("======================================================");
-        println!("              ReFineID Device Pairing                 ");
+        println!("              RefineID Device Pairing                 ");
         println!("======================================================");
         println!();
         println!("  PAIRING CODE:  {formatted_code}");
         println!();
-        println!("  1. Open ReFineID on your phone (iPhone / Android)");
+        println!("  1. Open RefineID on your phone (iPhone / Android)");
         println!("  2. Select \"Pair New Device\"");
         println!("  3. Enter the 6-digit code shown above");
         println!();
@@ -342,7 +342,7 @@ impl PairArgs {
         };
 
         let mut pair_record =
-            match pair_requester_over_stream(&mut stream, &offer_ctx, "ReFineID Linux", "Linux") {
+            match pair_requester_over_stream(&mut stream, &offer_ctx, "RefineID Linux", "Linux") {
                 Ok(rec) => rec,
                 Err(e) => {
                     eprintln!("Pairing failed: {e}");
@@ -543,7 +543,7 @@ impl AuthArgs {
     pub fn run(self) -> ExitCode {
         let target = self.url.as_deref().unwrap_or("https://card.refineid.fi");
         println!("======================================================");
-        println!("         ReFineID Remote Card Authentication          ");
+        println!("         RefineID Remote Card Authentication          ");
         println!("======================================================");
         println!("Target URL: {target}");
 

@@ -17,7 +17,7 @@
 //! Every outbound HTTP request goes through one of two paths:
 //!
 //! - **Honest** ([`honest`]): the default. RFC 7231 §5.5.3
-//!   product/version shape carrying `ReFineID/<version>
+//!   product/version shape carrying `RefineID/<version>
 //!   (+https://www.refineid.fi/)`. Used for everything that
 //!   accepts a non-browser identity -- CRL distribution points,
 //!   OCSP responders, AIA caIssuers, etc. This is the right
@@ -62,7 +62,7 @@
 /// URL lets server operators reach the project if our traffic
 /// causes them issues.
 const HONEST: &str = concat!(
-    "ReFineID/",
+    "RefineID/",
     env!("REFINEID_VERSION"),
     " (+https://www.refineid.fi/)"
 );
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn honest_carries_version_and_contact_url() {
-        assert!(HONEST.starts_with("ReFineID/"), "honest UA was {HONEST:?}");
+        assert!(HONEST.starts_with("RefineID/"), "honest UA was {HONEST:?}");
         assert!(
             HONEST.contains(env!("REFINEID_VERSION")),
             "honest UA missing version: {HONEST:?}"

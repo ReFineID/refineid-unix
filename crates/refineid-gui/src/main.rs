@@ -1347,7 +1347,7 @@ fn puk_status(status: Option<&PukStatus>) -> String {
 )]
 fn main() -> Result<(), slint::PlatformError> {
     let window = RefineIdWindow::new()?;
-    window.set_window_title(format!("ReFineID {}", env!("REFINEID_GUI_BUILD_VERSION")).into());
+    window.set_window_title(format!("RefineID {}", env!("REFINEID_GUI_BUILD_VERSION")).into());
     let portrait = Rc::new(RefCell::new(None::<UiImage>));
     let signature = Rc::new(RefCell::new(None::<UiImage>));
     let image_cache = Rc::new(RefCell::new(HashMap::<String, CachedImages>::new()));
@@ -2330,7 +2330,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut pair_record = match pair_requester_over_stream(
                     &mut stream,
                     &offer_ctx,
-                    "ReFineID Linux",
+                    "RefineID Linux",
                     "Linux",
                 ) {
                     Ok(rec) => rec,

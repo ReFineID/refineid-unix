@@ -1,4 +1,4 @@
-# ReFineID for Unix
+# RefineID for Unix
 
 **Refined Electronic Identification.**
 
@@ -27,7 +27,7 @@ the reproducible NixOS install are proven against real FINEID
 hardware; breadth of card-model coverage is still growing, and
 PIN-change stays off by default until validated on a 2026 ECC card.
 The macOS/iPadOS app lives in
-[ReFineID-Apple](https://github.com/refineid/refineid-apple).
+[RefineID-Apple](https://github.com/refineid/refineid-apple).
 
 ## Install
 

@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-//! `ReFineID` client library.
+//! `RefineID` client library.
 //!
 //! Surfaces the high-level operations the CLI binary
 //! (`refineid`) and future GUI peers call. The flagship is

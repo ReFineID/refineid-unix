@@ -2,7 +2,7 @@
 #
 #   programs.refineid.enable = true;
 #
-# gives you the refineid CLI, the ReFineID GUI, the PKCS#11
+# gives you the refineid CLI, the RefineID GUI, the PKCS#11
 # module registered system-wide for p11-kit consumers, the pcscd
 # smart-card daemon, and (when Firefox is managed by NixOS) automatic
 # Firefox card-login integration via the SecurityDevices policy.
@@ -18,20 +18,20 @@ let
 in
 {
   options.programs.refineid = {
-    enable = lib.mkEnableOption "ReFineID Finnish identity card middleware";
+    enable = lib.mkEnableOption "RefineID Finnish identity card middleware";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = refineidPackage pkgs;
       defaultText = lib.literalExpression "refineid packaged from this flake";
-      description = "The ReFineID package to install.";
+      description = "The RefineID package to install.";
     };
 
     firefoxIntegration = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = ''
-        Register the ReFineID PKCS#11 module in Firefox through the
+        Register the RefineID PKCS#11 module in Firefox through the
         SecurityDevices enterprise policy, so card login works with no
         per-user setup. Takes effect when Firefox is enabled through
         {option}`programs.firefox.enable`; a Firefox installed some
@@ -56,7 +56,7 @@ in
     # policy loads the module directly.
     programs.firefox.policies = lib.mkIf cfg.firefoxIntegration {
       SecurityDevices.Add = {
-        "ReFineID" = "${cfg.package}/lib/librefineid_pkcs11.so";
+        "RefineID" = "${cfg.package}/lib/librefineid_pkcs11.so";
       };
     };
   };

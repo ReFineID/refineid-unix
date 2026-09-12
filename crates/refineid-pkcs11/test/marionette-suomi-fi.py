@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Drive Firefox to log in to Suomi.fi using ReFineID PKCS#11 module via Marionette.
+Drive Firefox to log in to Suomi.fi using RefineID PKCS#11 module via Marionette.
 
 Usage:
   REFINEID_TEST_PIN1="<pin1>" ./crates/refineid-pkcs11/test/marionette-suomi-fi.py
@@ -106,7 +106,7 @@ def main():
 
     lib = find_pkcs11_lib()
     if not lib:
-        print("ERROR: ReFineID PKCS#11 library not found", file=sys.stderr)
+        print("ERROR: RefineID PKCS#11 library not found", file=sys.stderr)
         sys.exit(2)
     print(f"[*] Using PKCS#11 module: {lib}")
 
@@ -125,8 +125,8 @@ def main():
 
     print("[*] Initializing NSS database in profile...")
     subprocess.run(["certutil", "-N", "-d", f"sql:{profile_dir}", "--empty-password"], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["modutil", "-dbdir", f"sql:{profile_dir}", "-add", "ReFineID", "-libfile", lib, "-force"], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(["certutil", "-A", "-d", f"sql:{profile_dir}", "-n", "ReFineID-FINEID-auth", "-t", "u,u,u", "-i", auth_der], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["modutil", "-dbdir", f"sql:{profile_dir}", "-add", "RefineID", "-libfile", lib, "-force"], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["certutil", "-A", "-d", f"sql:{profile_dir}", "-n", "RefineID-FINEID-auth", "-t", "u,u,u", "-i", auth_der], check=True, stdout=subprocess.DEVNULL)
 
     user_js = os.path.join(profile_dir, "user.js")
     with open(user_js, "w") as f:

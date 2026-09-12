@@ -1,5 +1,5 @@
 {
-  description = "ReFineID -- open-source FINEID middleware for Finnish identity cards";
+  description = "RefineID -- open-source FINEID middleware for Finnish identity cards";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";

@@ -186,10 +186,10 @@ the conflation removed.
 
 ### Project name forms
 
-**ReFineID / refineid / REFINEID / `librefineid_*`** -- four
+**RefineID / refineid / REFINEID / `librefineid_*`** -- four
 written forms; not interchangeable.
 
-- `ReFineID` for prose
+- `RefineID` for prose
 - `refineid` for command and crate names
 - `REFINEID` for environment variables
 - `librefineid_*` for FFI symbols
@@ -198,6 +198,6 @@ The name layers deliberately: **Re** = reimplementation (not Rust),
 **Fin** = Finn(ish citizen), **e** = electronic, **ID** = identity.
 The lowercase `refineid` contains the Swedish `finne` (= Finn), and
 the library name `librefineid_pkcs11` reads as "Libre Finn e-ID";
-spoken aloud, `ReFineID` is approximately "refine". Every layer is a
+spoken aloud, `RefineID` is approximately "refine". Every layer is a
 deliberate decision, not a typo -- do not "correct" the spelling,
 the capitalisation, or the `lib` prefix.

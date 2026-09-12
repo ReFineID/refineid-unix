@@ -1,4 +1,4 @@
-# ReFineID GUI
+# RefineID GUI
 
 Native desktop application for managing supported FINEID cards through PC/SC readers.
 

@@ -661,7 +661,7 @@ mod unzip_interop {
         std::fs::create_dir_all(&dir).expect("scratch dir");
         let container = dir.join("out.asice");
 
-        let dossier = b"ReFineID -- declaration d'un moyen de cryptologie".to_vec();
+        let dossier = b"RefineID -- declaration d'un moyen de cryptologie".to_vec();
         let objects = vec![
             DataObject {
                 name: "dossier.pdf".to_owned(),

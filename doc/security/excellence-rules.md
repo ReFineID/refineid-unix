@@ -1,6 +1,6 @@
 # Excellent-by-default: mechanical rules
 
-ReFineID is engineered to be auditable by any serious security
+RefineID is engineered to be auditable by any serious security
 reviewer. This is the condensed public rule set the code comments
 cite; each rule keeps its stable ID.
 

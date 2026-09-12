@@ -1,6 +1,6 @@
 # Security Policy
 
-ReFineID handles card credentials and retry-limited operations. Please report
+RefineID handles card credentials and retry-limited operations. Please report
 security issues privately through GitHub's **Report a vulnerability** action on
 the repository Security tab.
 

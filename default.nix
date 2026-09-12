@@ -1,4 +1,4 @@
-# Non-flake entry point: nix-build builds the ReFineID package with
+# Non-flake entry point: nix-build builds the RefineID package with
 # the nixpkgs on NIX_PATH. crane comes pinned from flake.lock so both
 # entry points build the same derivation.
 {

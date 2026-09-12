@@ -290,7 +290,7 @@ impl SignDocumentArgs {
             });
         }
         // The Sectigo qualified endpoint is the default across the
-        // first-party ReFineID clients; --no-timestamp is the explicit
+        // first-party RefineID clients; --no-timestamp is the explicit
         // route to an unattested level-B signature.
         if timestamp_authorities.is_empty() && !no_timestamp {
             timestamp_authorities.push(DEFAULT_TIMESTAMP_AUTHORITY.to_owned());
