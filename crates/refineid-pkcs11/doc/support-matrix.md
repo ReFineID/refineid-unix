@@ -5,11 +5,11 @@ cell is a deliberate decision; nothing here is "we forgot to
 implement that". If a consumer asks "can I do X with this token?",
 this page answers it.
 
-Ground truth is `src/api.rs` (the v2.40 vtable and every stub),
-`src/sign.rs` (mechanism parsing and the card leg), and
-`src/token.rs` (objects, PIN guard). The module is read-only and
-sign-only: its single job is Firefox / NSS client-certificate TLS
-authentication (see [`../README.md`](../README.md)).
+Ground truth is in `refineid-core`'s `pkcs11` crate (`api.rs` for the
+v2.40 vtable and every stub, `sign.rs` for mechanism parsing and the
+card leg, and `token.rs` for objects and PIN guard). The module is
+read-only and sign-only: its single job is Firefox / NSS
+client-certificate TLS authentication (see [`../README.md`](../README.md)).
 
 ## Versioning
 
@@ -94,11 +94,11 @@ implemented-but-hidden.
 
 | Source | What |
 |---|---|
-| `src/api.rs::c_get_mechanism_list` / `card_mechanism` | the one-entry mechanism list, read from the card |
-| `src/api.rs::c_get_mechanism_info` | key-size bounds and capability flags |
-| `src/api.rs` bottom half | every stub and its specific CK_RV |
-| `src/sign.rs::Mechanism` | ck-type mapping, signature lengths, input parsing |
-| `src/token.rs::TokenObjects::fill_key_material` | SPKI -> key type -> mechanism selection |
+| `refineid-core::pkcs11::api::c_get_mechanism_list` / `card_mechanism` | the one-entry mechanism list, read from the card |
+| `refineid-core::pkcs11::api::c_get_mechanism_info` | key-size bounds and capability flags |
+| `refineid-core::pkcs11::api` bottom half | every stub and its specific CK_RV |
+| `refineid-core::pkcs11::sign::Mechanism` | ck-type mapping, signature lengths, input parsing |
+| `refineid-core::pkcs11::token::TokenObjects::fill_key_material` | SPKI -> key type -> mechanism selection |
 
 ## Adding a mechanism
 

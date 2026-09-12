@@ -75,7 +75,7 @@ without launching Firefox: it dlopens the built module exactly like
 NSS and replays NSS's discovery probes, including the vendor-defined
 builtin-root class and the `CKO_PROFILE` search this module must
 answer with zero matches (the eager-PIN1 rule). Run
-`cargo run -p refineid-pkcs11 --example nss_debug` with a card
+`cargo run -p refineid-unix-pkcs11 --example nss_debug` with a card
 present; add `--login` (PIN1 from `REFINEID_PIN1`) and
 `--sign-probe` for the key path.
 

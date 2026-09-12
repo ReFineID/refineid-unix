@@ -39,7 +39,7 @@ No. The module does exactly what PKCS#11 requires: expose the cert
 object, accept `C_Login` / `C_Sign` when invoked. PKCS#11 gives the
 token no server identity or `CertificateRequest` contents, so the
 module cannot filter per-server. The eager-PIN1 rule (see the
-`CKO_PROFILE` hard limit in `../src/token.rs`) is satisfied: PIN1
+`CKO_PROFILE` hard limit in `refineid-core`'s `pkcs11::token`) is satisfied: PIN1
 is asked only because a TLS client-auth handshake actually needs
 the key -- the citizen just didn't consciously start one.
 
