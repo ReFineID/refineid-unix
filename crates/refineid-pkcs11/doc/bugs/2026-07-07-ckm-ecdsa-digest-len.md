@@ -45,8 +45,9 @@ integer, so left-padding a shorter digest with zeros preserves its
 value; longer digests keep the leftmost 384 bits. Empty input is
 rejected (`CKR_DATA_LEN_RANGE`).
 
-Implemented as the `CkEcdsaDigest` newtype in `src/sign.rs`: raw
-CKM_ECDSA bytes enter through `fit_p384()`, and only the explicit
+Implemented as the `CkEcdsaDigest` newtype in `refineid-core`'s
+`pkcs11::sign`: raw CKM_ECDSA bytes enter through `fit_p384()`, and only the
+explicit
 `into_card_hash()` boundary converts the fitted block into the
 lib-core `Sha384` type handed to the card. A padded SHA-256 digest
 is never disguised as a SHA-384 hash anywhere else in the pipeline.

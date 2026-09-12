@@ -108,12 +108,12 @@ If a future consumer needs another mechanism:
    specifications (S1 algorithm tables; S4-1 PrKDF access modes)
    at <https://dvv.fi/en/fineid-specifications>, then prove the
    algRef on real hardware.
-2. Add the variant to `Mechanism` in `src/sign.rs` with its input
-   parser and card leg (`sign_with_card`), plus its
-   `signature_len` for the two-call query.
+2. Add the variant to `Mechanism` in `refineid-core`'s
+   `pkcs11::sign` with its input parser and card leg
+   (`sign_with_card`), plus its `signature_len` for the two-call query.
 3. Advertise it: extend `card_mechanism` / `c_get_mechanism_list`
-   and give it correct flags and key-size bounds in
-   `c_get_mechanism_info`.
+   and give it correct flags and key-size bounds in `refineid-core`'s
+   `pkcs11::api` (`c_get_mechanism_info`).
 4. Hardware-validate the full flow (card + reader on the target
    platform) per AGENTS.md hard rule #2; the operator rigs in
    `test/` are the starting point.
