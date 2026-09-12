@@ -20,7 +20,7 @@
 //! modules never think about (the vendor-defined NSS builtin-root
 //! class and the v3.0 `CKO_PROFILE` object, which this module must
 //! answer with ZERO matches; see the eager-PIN1 rule on
-//! `ObjectKind` in `src/token.rs`).
+//! `ObjectKind` in `refineid-core`'s `pkcs11::token`).
 //!
 //! Usage (needs a card in a reader; read-only unless flags given):
 //!
