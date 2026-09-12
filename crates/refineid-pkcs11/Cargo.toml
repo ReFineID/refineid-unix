@@ -1,6 +1,6 @@
 [package]
-name = "refineid-pkcs11"
-description = "PKCS#11 v2.40 cryptoki module for FINEID -- a minimal read-only, sign-only cdylib exposing the card's authentication certificate + private key for Firefox / NSS client-certificate TLS on Linux and the BSDs (and, via pkcs11-provider, OpenSSL). Card-edge logic is shared with refineid-lib-core."
+name = "refineid-unix-pkcs11"
+description = "PKCS#11 v2.40 cdylib module for FINEID (wrapping refineid-core)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,35 +10,20 @@ rust-version.workspace = true
 publish = false
 
 [features]
-# PIN change (C_SetPIN -> CHANGE REFERENCE DATA). The implementation
-# is counter-safe (preflight, cache invalidation, reject-clear) and
-# hardware-proven on the old RSA card, but it stays OFF by default
-# until proven on a 2026 ECC card -- a lockout there is unrecoverable.
-# The first beta ships login-only (feature off): the token reports
-# write-protected so NSS greys out "Change Password", and C_SetPIN
-# returns CKR_FUNCTION_NOT_SUPPORTED. Enable with --features pin-change
-# once the ECC path is validated.
 default = []
-pin-change = []
-# test-pin-env: when C_Login is called, override the caller-supplied PIN
-# with the REFINEID_TEST_PIN1 environment variable if it is set.  This
-# lets Marionette / headless automation skip Firefox's GUI PIN dialog.
-# NEVER enable in production builds.
-test-pin-env = []
+pin-change = ["refineid-pkcs11/pin-change"]
+test-pin-env = ["refineid-pkcs11/test-pin-env"]
 
 [lints]
 workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 name = "refineid_pkcs11"
 
 [dependencies]
-refineid-lib-core.workspace = true
-refineid-lib-pcsc.workspace = true
+refineid-pkcs11.workspace = true
 
 [dev-dependencies]
-# examples/nss_debug.rs dlopens the built cdylib the same way NSS
-# does; libc provides dlopen/dlsym (already in the workspace graph
-# and vetted).
+refineid-lib-core.workspace = true
 libc = "0.2"

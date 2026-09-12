@@ -264,7 +264,7 @@ REFINEID_CANONICAL_DYLIB=$PWD/target/release/librefineid_pkcs11.so \
 crates/refineid-pkcs11/test/headless-cert-auth.sh
 ```
 
-Build the module first (`cargo build --release -p refineid-pkcs11`),
+Build the module first (`cargo build --release -p refineid-unix-pkcs11`),
 or point `REFINEID_CANONICAL_DYLIB` at the installed
 `/run/current-system/sw/lib/librefineid_pkcs11.so`. A wrong PIN
 consumes a card retry, so double-check `REFINEID_TEST_PIN1` before

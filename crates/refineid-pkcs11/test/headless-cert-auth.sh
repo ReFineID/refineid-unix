@@ -117,7 +117,7 @@ done
 
 [ -f "$CANONICAL" ] || {
   echo "canonical module missing: $CANONICAL" >&2
-  echo "build first: cargo build --release -p refineid-pkcs11" >&2
+  echo "build first: cargo build --release -p refineid-unix-pkcs11" >&2
   exit 2
 }
 if [ -n "$LEGACY" ] && [ ! -f "$LEGACY" ]; then

@@ -4635,21 +4635,31 @@ dependencies = [
 [[package]]
 name = "refineid-apdu"
 version = "26.9.12"
-source = "git+https://github.com/refineid/refineid-core.git?branch=main#2e7dcfd46330f092f1bf5e15e0e3dacfe6c607ba"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
 dependencies = [
  "zeroize",
 ]
 
 [[package]]
+name = "refineid-atr"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+
+[[package]]
 name = "refineid-auth"
 version = "26.9.12"
-source = "git+https://github.com/refineid/refineid-core.git?branch=main#2e7dcfd46330f092f1bf5e15e0e3dacfe6c607ba"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
 dependencies = [
  "hmac",
  "refineid-apdu",
  "sha2",
  "zeroize",
 ]
+
+[[package]]
+name = "refineid-ber"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
 
 [[package]]
 name = "refineid-client"
@@ -4666,6 +4676,30 @@ dependencies = [
  "sha2",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "refineid-cms"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "const-oid",
+ "crypto-bigint",
+ "refineid-ber",
+ "refineid-digest",
+ "sha1",
+ "sha2",
+ "spki",
+ "x509-cert",
+]
+
+[[package]]
+name = "refineid-digest"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "sha1",
+ "sha2",
 ]
 
 [[package]]
@@ -4727,12 +4761,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "refineid-pcsc"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "pcsc",
+ "refineid-apdu",
+ "refineid-atr",
+]
+
+[[package]]
+name = "refineid-pin-cache"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "getrandom 0.4.3",
+ "refineid-auth",
+ "refineid-pkcs15",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "refineid-pkcs11"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "getrandom 0.4.3",
+ "hex",
+ "refineid-apdu",
+ "refineid-auth",
+ "refineid-cms",
+ "refineid-digest",
+ "refineid-pcsc",
+ "refineid-pin-cache",
+ "refineid-pkcs15",
+ "refineid-sign",
+ "refineid-x509",
+ "spki",
+ "zeroize",
+]
+
+[[package]]
+name = "refineid-pkcs15"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "refineid-apdu",
+ "refineid-ber",
+ "refineid-x509",
+]
+
+[[package]]
+name = "refineid-sign"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "refineid-apdu",
+ "zeroize",
+]
+
+[[package]]
+name = "refineid-unix-pkcs11"
 version = "26.9.12"
 dependencies = [
  "libc",
  "refineid-lib-core",
- "refineid-lib-pcsc",
+ "refineid-pkcs11",
+]
+
+[[package]]
+name = "refineid-x509"
+version = "26.9.12"
+source = "git+https://github.com/refineid/refineid-core.git?branch=main#0b6036df1949d396116f47d7450327befa53f287"
+dependencies = [
+ "refineid-ber",
 ]
 
 [[package]]
