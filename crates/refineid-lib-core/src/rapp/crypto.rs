@@ -109,12 +109,12 @@ impl NoiseCipherState {
         let Some(key_bytes) = self.key else {
             return Ok(plaintext.to_vec());
         };
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+        let cipher = ChaCha20Poly1305::new(&Key::from(key_bytes));
         let nonce_bytes = Self::nonce(self.counter);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
         let ciphertext = cipher
             .encrypt(
-                nonce,
+                &nonce,
                 Payload {
                     msg: plaintext,
                     aad,
@@ -136,12 +136,12 @@ impl NoiseCipherState {
         if ciphertext.len() < TAG_LEN {
             return Err(WireError::Truncated);
         }
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
+        let cipher = ChaCha20Poly1305::new(&Key::from(key_bytes));
         let nonce_bytes = Self::nonce(self.counter);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
         let plaintext = cipher
             .decrypt(
-                nonce,
+                &nonce,
                 Payload {
                     msg: ciphertext,
                     aad,
