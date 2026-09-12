@@ -2,4 +2,4 @@
 # compile time (refineid_lib_core::VERSION, the CLI user agent).
 # Kept equal to the VERSION file at the repo root.
 [env]
-REFINEID_VERSION = { value = "26.9.6.131", force = true }
+REFINEID_VERSION = { value = "26.9.12.81", force = true }

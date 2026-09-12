@@ -25,7 +25,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-read -r year month day hour minute < <(date '+%y %-m %-d %-H %-M')
+read -r year month day hour minute < <(date -u '+%y %-m %-d %-H %-M')
 today="$year.$month.$day"
 time_bucket=$((10#$hour * 10 + 10#$minute / 10))
 project_version="$today.$time_bucket"
