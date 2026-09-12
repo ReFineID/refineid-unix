@@ -59,7 +59,7 @@ if [[ "${REFINEID_HARDWARE_TEST:-}" != "1" ]]; then
 fi
 
 PIN1="${REFINEID_TEST_PIN1:?set REFINEID_TEST_PIN1=<pin1>}"
-PIN1_TMP="${REFINEID_TEST_PIN1_TMP:-4321}"
+PIN1_TMP="${REFINEID_TEST_PIN1_TMP:?set REFINEID_TEST_PIN1_TMP=<temporary-pin1-for-change-test>}"
 
 REPO_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 case "$(uname -s)" in
