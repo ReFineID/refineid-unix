@@ -38,20 +38,7 @@ x25519-dalek.workspace = true
 chacha20poly1305.workspace = true
 x509-cert = { version = "0.3", default-features = false }
 
-refineid-apdu.workspace = true
-refineid-atr.workspace = true
 refineid-auth.workspace = true
-refineid-ber.workspace = true
-refineid-cms.workspace = true
-refineid-digest.workspace = true
-refineid-emrtd.workspace = true
-refineid-pace.workspace = true
-refineid-pin-cache.workspace = true
-refineid-pkcs15.workspace = true
-refineid-rapp.workspace = true
-refineid-remote.workspace = true
-refineid-sign.workspace = true
-refineid-x509.workspace = true
 
 [dev-dependencies]
 hex.workspace = true
