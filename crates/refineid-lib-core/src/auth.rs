@@ -352,14 +352,7 @@ impl core::fmt::Display for PinPolicyReason {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::WrongLength { min, max } => {
-                if min == max {
-                    write!(
-                        f,
-                        "pin length outside accepted range: expected exactly {min} digits"
-                    )
-                } else {
-                    write!(f, "pin length outside accepted range {min}..={max}")
-                }
+                write!(f, "pin length outside accepted range {min}..={max}")
             }
             Self::NonDigit => {
                 write!(f, "pin must contain only ASCII digits")
@@ -2063,12 +2056,6 @@ mod tests {
             PIN1_MIN_LENGTH, PIN1_STORED_LENGTH
         );
         assert_eq!(wrong_len.to_string(), expected_wrong_len);
-
-        let exact_len = PinPolicyReason::WrongLength { min: 7, max: 7 };
-        assert_eq!(
-            exact_len.to_string(),
-            "pin length outside accepted range: expected exactly 7 digits"
-        );
 
         let non_digit = PinPolicyReason::NonDigit;
         assert_eq!(non_digit.to_string(), "pin must contain only ASCII digits");
