@@ -13,7 +13,7 @@
 # implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-# Build binary Debian (.deb) packages for ReFineID.
+# Build binary Debian (.deb) packages for RefineID.
 #
 # Packages generated:
 #   1. refineid-pkcs11: PKCS#11 module, p11-kit configuration, Firefox enterprise policy
@@ -71,7 +71,7 @@ cat > "$STAGING_PKCS11/etc/firefox/policies/policies.json" << 'POLICIESEOF'
 {
   "policies": {
     "SecurityDevices": {
-      "ReFineID": "/usr/lib/librefineid_pkcs11.so"
+      "RefineID": "/usr/lib/librefineid_pkcs11.so"
     }
   }
 }
@@ -94,7 +94,7 @@ Depends: libc6, libpcsclite1, p11-kit
 Recommends: pcscd, libccid
 Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID PKCS#11 module for Finnish identity cards
- ReFineID PKCS#11 module enabling authentication, document signing, and
+ RefineID PKCS#11 module enabling authentication, document signing, and
  card cryptography across web browsers (Firefox, Chrome), OpenSC, and
  NSS applications.
 CONTROLEOF
@@ -147,7 +147,7 @@ Depends: libc6, libpcsclite1
 Recommends: pcscd, libccid, refineid-pkcs11
 Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID command-line tool for Finnish identity cards
- ReFineID command-line interface for smart card status inspection, PIN verification
+ RefineID command-line interface for smart card status inspection, PIN verification
  and change, remote card pairing (RAPP), and authentication testing.
 CONTROLEOF
 chmod 644 "$STAGING_CLI/DEBIAN/control"
@@ -170,19 +170,10 @@ mkdir -p \
 
 install -m 755 target/release/refineid-gui "$STAGING_GUI/usr/bin/refineid-gui"
 
-cat > "$STAGING_GUI/usr/share/applications/refineid.desktop" << 'DESKTOPEOF'
-[Desktop Entry]
-Type=Application
-Name=ReFineID
-GenericName=Identity card tool
-Comment=Finnish identity card: PIN management, portrait and signature, document signing
-Exec=refineid-gui
-Icon=refineid
-Terminal=false
-Categories=Utility;Security;
-Keywords=FINEID;smartcard;PIN;identity;signing;
-DESKTOPEOF
-chmod 644 "$STAGING_GUI/usr/share/applications/refineid.desktop"
+# Canonical entry lives in packaging/refineid.desktop so the .deb and
+# script/install-desktop.sh cannot drift apart.
+install -m 644 packaging/refineid.desktop \
+    "$STAGING_GUI/usr/share/applications/refineid.desktop"
 
 install -m 644 crates/refineid-gui/assets/app-icon.svg \
     "$STAGING_GUI/usr/share/icons/hicolor/scalable/apps/refineid.svg"
@@ -198,7 +189,7 @@ Depends: libc6, libpcsclite1, libgtk-3-0 | libgtk-3-0t64, libfontconfig1, libx11
 Recommends: refineid-pkcs11 (= ${VERSION})
 Homepage: https://github.com/refineid/refineid-unix
 Description: Graphical user interface for Finnish identity cards
- ReFineID graphical desktop application for PIN management, card portrait and
+ RefineID graphical desktop application for PIN management, card portrait and
  signature inspection, document signing, and pairing management.
 CONTROLEOF
 chmod 644 "$STAGING_GUI/DEBIAN/control"
@@ -256,7 +247,7 @@ Depends: refineid-cli (>= ${VERSION}), refineid-pkcs11 (>= ${VERSION}), refineid
 Recommends: pcscd, libccid, pcsc-tools
 Homepage: https://github.com/refineid/refineid-unix
 Description: Open-source FINEID middleware for Finnish identity cards (metapackage)
- ReFineID is an open-source FINEID smart-card middleware for Finnish identity
+ RefineID is an open-source FINEID smart-card middleware for Finnish identity
  cards on Linux. This metapackage installs the command-line tool, PKCS#11 module,
  and desktop GUI.
 CONTROLEOF

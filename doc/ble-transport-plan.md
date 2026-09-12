@@ -5,7 +5,7 @@
 - **Target Profile Identifier**: `fi.refineid.ble.v1`
 - **Status**: Vetted Architecture & Implementation Plan
 - **Date**: 2026-08-26
-- **Applies To**: `ReFineID-Apple` (iOS/macOS), `ReFineID-Unix` (Linux), `ReFineID-Android`
+- **Applies To**: `RefineID-Apple` (iOS/macOS), `RefineID-Unix` (Linux), `RefineID-Android`
 
 ---
 
@@ -40,7 +40,7 @@ Like the TCP stream profile (`fi.refineid.stream.v1`), every RAPP frame over BLE
 ### 2.3 GATT Service & Discovery Layout (Fallback / Bootstrap)
 
 ```
-Primary Service UUID: FA1D0001-C34A-4836-843B-7603B5749A32 (ReFineID RAPP Service)
+Primary Service UUID: FA1D0001-C34A-4836-843B-7603B5749A32 (RefineID RAPP Service)
 
 Characteristics:
 ├── L2CAP PSM Characteristic (Read)
@@ -59,7 +59,7 @@ When advertising BLE support in the pairing QR code, the `transport-candidate` p
 
 ```cddl
 ble-parameters = {
-  "service_uuid": tstr,             ; 128-bit ReFineID Service UUID
+  "service_uuid": tstr,             ; 128-bit RefineID Service UUID
   ? "psm": uint                     ; L2CAP PSM if statically known
 }
 ```
@@ -89,15 +89,15 @@ ble-rendezvous = [
 
 ---
 
-## 4. Architecture in `ReFineID-Apple` & `ReFineID-Unix`
+## 4. Architecture in `RefineID-Apple` & `RefineID-Unix`
 
-### 4.1 Apple (`ReFineID-Apple`)
+### 4.1 Apple (`RefineID-Apple`)
 - **`BleRelaySession.swift`**: Manages `CBCentralManager` (client) and `CBPeripheralManager` (server) lifecycle.
 - **`BleL2CAPChannelHandler.swift`**: Wraps `CBL2CAPChannel` input/output streams into the standard `RappFrameTransport` interface.
 - **`BleRelayEndpoint.swift`**: Represents Service UUID and PSM endpoints matching the QR candidate.
 - **`BleRelayFraming.swift`**: Handles length-prefix boundary verification.
 
-### 4.2 Linux (`ReFineID-Unix`)
+### 4.2 Linux (`RefineID-Unix`)
 - **`refineid-lib-core / rapp`**: Shared framing, preamble codecs, and Noise handshake.
 - **`refineid-pkcs11` & CLI**: Uses BlueZ L2CAP sockets (`AF_BLUETOOTH`, `BTPROTO_L2CAP`) or D-Bus GATT service for BLE connection.
 

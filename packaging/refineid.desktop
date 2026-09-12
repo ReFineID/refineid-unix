@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=RefineID
+GenericName=Identity card tool
+Comment=Finnish identity card: PIN management, portrait and signature, document signing
+Exec=refineid-gui
+Icon=refineid
+Terminal=false
+Categories=Utility;Security;
+Keywords=FINEID;smartcard;PIN;identity;signing;

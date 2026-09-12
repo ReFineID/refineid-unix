@@ -44,7 +44,7 @@ Observed 2026-08-09 on a production Thales MultiApp v5 FINEID card:
    45.304--45.317 seconds.
 4. One earlier run received the structurally valid 22-byte response at
    42.47 seconds. This excludes a malformed APDU as the general cause.
-5. An exact clean ReFineID-Apple `origin/main` build reproduced the
+5. An exact clean RefineID-Apple `origin/main` build reproduced the
    timeout.
 6. The same card then failed registration on a second phone.
 

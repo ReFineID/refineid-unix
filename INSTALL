@@ -1,13 +1,13 @@
-# Installing ReFineID
+# Installing RefineID
 
-ReFineID provides the `refineid` CLI, the desktop GUI (`refineid-gui`),
+RefineID provides the `refineid` CLI, the desktop GUI (`refineid-gui`),
 and the PKCS#11 module (`librefineid_pkcs11.so`) for Finnish identity cards.
 
 ---
 
 ## 1. Debian & Ubuntu (.deb package)
 
-The recommended way to install ReFineID on Ubuntu / Debian is to build
+The recommended way to install RefineID on Ubuntu / Debian is to build
 and install the standalone `.deb` package using the single packaging script.
 
 ### 1a. Install Build Dependencies
@@ -32,7 +32,7 @@ sudo apt install -y \
 ```
 
 **2. Rust Toolchain (Rust 1.95+ required):**
-ReFineID uses the Rust 2024 edition and requires Rust 1.95 or newer. If your distribution's packaged `rustc` is older than 1.95 (e.g., Ubuntu 24.04 / 26.04 default packages), install or update Rust via [rustup](https://rustup.rs):
+RefineID uses the Rust 2024 edition and requires Rust 1.95 or newer. If your distribution's packaged `rustc` is older than 1.95 (e.g., Ubuntu 24.04 / 26.04 default packages), install or update Rust via [rustup](https://rustup.rs):
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
@@ -114,7 +114,7 @@ sudo install -m 644 crates/refineid-gui/assets/app-icon.svg /usr/local/share/ico
 sudo install -m 644 -T <(cat << 'DESKTOPEOF'
 [Desktop Entry]
 Type=Application
-Name=ReFineID
+Name=RefineID
 GenericName=Identity card tool
 Comment=Finnish identity card: PIN management, portrait and signature, document signing
 Exec=/usr/local/bin/refineid-gui
@@ -139,7 +139,13 @@ sudo systemctl enable --now pcscd.socket
 
 ---
 
-## 4. Verifying the Installation
+## 4. NetBSD
+
+NetBSD 11.0/aarch64 builds the whole workspace including the Slint GUI.
+See [doc/install-netbsd.md](doc/install-netbsd.md) for the bring-up order
+(base X sets, pkgsrc packages, pcscd, VNC desktop, Openbox menu).
+
+## 5. Verifying the Installation
 
 1. **Reader and Card Status**:
    ```sh

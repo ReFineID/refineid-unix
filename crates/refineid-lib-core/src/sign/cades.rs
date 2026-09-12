@@ -949,7 +949,7 @@ mod openssl_interop {
                 "-days",
                 "1",
                 "-subj",
-                "/CN=ReFineID CAdES interop",
+                "/CN=RefineID CAdES interop",
             ],
         );
         run(
@@ -967,7 +967,7 @@ mod openssl_interop {
 
         let cert_der = std::fs::read(path("cert.der")).expect("cert der");
         let certificate = Certificate::from_der(&cert_der).expect("cert parses");
-        let document = b"ReFineID -- declaration of a means of cryptology";
+        let document = b"RefineID -- declaration of a means of cryptology";
 
         let parameters = SignerParameters {
             certificate: &certificate,
@@ -1058,7 +1058,7 @@ mod openssl_interop {
                 "-days",
                 "1",
                 "-subj",
-                "/CN=ReFineID CAdES detached",
+                "/CN=RefineID CAdES detached",
             ],
         );
         run(

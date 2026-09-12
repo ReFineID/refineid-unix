@@ -1,6 +1,6 @@
 # Observability
 
-The condensed contract the code comments cite: how ReFineID emits
+The condensed contract the code comments cite: how RefineID emits
 events, what severity means, and what may persist.
 
 Events are OBSERVATIONS about operations, delivered through

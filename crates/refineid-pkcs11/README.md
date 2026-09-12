@@ -19,7 +19,7 @@ Implemented:
 - Sessions: `C_OpenSession` (serial, read-only), `C_CloseSession`, `C_CloseAllSessions`, `C_GetSessionInfo`.
 - Login: `C_Login` (`CKU_USER` only), `C_Logout`.
   On success the module best-effort forwards PIN1 over a local
-  pin-channel socket to the ReFineID signature-creation-service
+  pin-channel socket to the RefineID signature-creation-service
   daemon when one is running (a separate component), and reports
   card removal the same way, so that daemon neither prompts a
   second time nor serves a stale cache. Forwards run detached;
@@ -130,7 +130,7 @@ critical: no
 ```
 
 Firefox / NSS then load the module through p11-kit,
-or you can add it directly with `modutil -dbdir sql:$HOME/.pki/nssdb -add "ReFineID" -libfile /usr/lib64/pkcs11/librefineid_pkcs11.so`.
+or you can add it directly with `modutil -dbdir sql:$HOME/.pki/nssdb -add "RefineID" -libfile /usr/lib64/pkcs11/librefineid_pkcs11.so`.
 OpenSSL reaches the same module through `pkcs11-provider`, which also enumerates p11-kit modules.
 
 This README documents the file content only; it installs nothing.

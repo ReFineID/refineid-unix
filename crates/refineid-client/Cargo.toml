@@ -1,6 +1,6 @@
 [package]
 name = "refineid-client"
-description = "ReFineID client library + CLI -- on-card metadata, eMRTD reads, PIN management, document signing, revocation checks."
+description = "RefineID client library + CLI -- on-card metadata, eMRTD reads, PIN management, document signing, revocation checks."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

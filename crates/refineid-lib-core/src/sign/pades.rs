@@ -3744,7 +3744,7 @@ mod pdfsig_interop {
                 "-days",
                 "1",
                 "-subj",
-                "/CN=ReFineID PAdES interop",
+                "/CN=RefineID PAdES interop",
             ],
         );
         run(

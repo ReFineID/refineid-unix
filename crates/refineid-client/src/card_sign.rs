@@ -88,7 +88,7 @@ pub const EU_QUALIFIED_TIMESTAMP_AUTHORITIES: &[&str] = &[DEFAULT_TIMESTAMP_AUTH
 /// The timestamp authority used when the operator configures none.
 ///
 /// The Sectigo qualified endpoint, shared by every first-party
-/// `ReFineID` client and documented at
+/// `RefineID` client and documented at
 /// <https://www.sectigo.com/resource-library/time-stamping-server>.
 pub const DEFAULT_TIMESTAMP_AUTHORITY: &str = "http://timestamp.sectigo.com/qualified";
 
@@ -2374,7 +2374,7 @@ mod tests {
     #[test]
     #[ignore = "needs the live Sectigo qualified timestamp service"]
     fn live_sectigo_timestamp_response_verifies_directly() -> TestResult {
-        let digest = DigestAlgorithm::Sha384.digest(b"ReFineID Sectigo interoperability probe");
+        let digest = DigestAlgorithm::Sha384.digest(b"RefineID Sectigo interoperability probe");
         let token = request_token(
             "http://timestamp.sectigo.com/qualified",
             None,

@@ -19,5 +19,5 @@ fn main() {
     let version = std::env::var("REFINEID_GUI_BUILD_VERSION_OVERRIDE")
         .unwrap_or_else(|_| env!("REFINEID_VERSION").to_owned());
     println!("cargo:rustc-env=REFINEID_GUI_BUILD_VERSION={version}");
-    slint_build::compile("ui/refineid-gui.slint").expect("compile ReFineID GUI");
+    slint_build::compile("ui/refineid-gui.slint").expect("compile RefineID GUI");
 }

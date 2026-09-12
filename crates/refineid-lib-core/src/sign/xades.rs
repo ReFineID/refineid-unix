@@ -894,7 +894,7 @@ mod xmlsec_interop {
                 "1",
                 "-nodes",
                 "-subj",
-                "/CN=ReFineID XAdES interop",
+                "/CN=RefineID XAdES interop",
                 "-keyout",
                 "key.pem",
                 "-out",
@@ -917,7 +917,7 @@ mod xmlsec_interop {
             DataObject {
                 name: "dossier.pdf".to_owned(),
                 mime_type: "application/pdf".to_owned(),
-                content: b"ReFineID -- declaration d'un moyen de cryptologie".to_vec(),
+                content: b"RefineID -- declaration d'un moyen de cryptologie".to_vec(),
             },
             DataObject {
                 name: "formulaire.txt".to_owned(),
@@ -1039,7 +1039,7 @@ mod xmlsec_interop {
                 "1",
                 "-nodes",
                 "-subj",
-                "/CN=ReFineID ASiC interop",
+                "/CN=RefineID ASiC interop",
                 "-keyout",
                 "key.pem",
                 "-out",
@@ -1059,7 +1059,7 @@ mod xmlsec_interop {
             DataObject {
                 name: "dossier.pdf".to_owned(),
                 mime_type: "application/pdf".to_owned(),
-                content: b"ReFineID -- declaration d'un moyen de cryptologie".to_vec(),
+                content: b"RefineID -- declaration d'un moyen de cryptologie".to_vec(),
             },
             DataObject {
                 name: "annexe.txt".to_owned(),

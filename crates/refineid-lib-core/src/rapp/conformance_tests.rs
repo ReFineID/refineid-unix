@@ -295,7 +295,7 @@ fn test_synthetic_pairing_and_operation_roundtrip() {
 
     // Run requester pairing on main thread
     let pair_record =
-        pair_requester_over_stream(&mut requester_pipe, &offer_ctx, "ReFineID Ubuntu", "Linux")
+        pair_requester_over_stream(&mut requester_pipe, &offer_ctx, "RefineID Ubuntu", "Linux")
             .expect("ok");
 
     let proxy_record = proxy_handle.join().expect("ok");

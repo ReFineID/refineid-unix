@@ -1,6 +1,6 @@
-# Installing ReFineID on NixOS
+# Installing RefineID on NixOS
 
-Everything below builds ReFineID from this source tree. Nix fetches
+Everything below builds RefineID from this source tree. Nix fetches
 every build dependency (Rust toolchain, pcsc-lite, fontconfig, GUI
 libraries) by itself; nothing needs to be installed by hand first.
 
@@ -8,7 +8,7 @@ Building needs a few gigabytes of memory free; on a small machine or
 VM, add swap before building -- see Troubleshooting. Only the first
 build compiles everything: the dependency build is kept in the local
 Nix store and reused, so following the repository rebuilds just the
-ReFineID crates.
+RefineID crates.
 
 ## Fresh machine, shortest path (not recommended)
 
@@ -17,13 +17,13 @@ Add to `/etc/nixos/configuration.nix`:
 ```nix
   imports = [
     ./hardware-configuration.nix
-    ((builtins.getFlake "github:ReFineID/ReFineID-Unix").nixosModules.default)
+    ((builtins.getFlake "github:RefineID/RefineID-Unix").nixosModules.default)
   ];
   programs.refineid.enable = true;
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
     # Keep the dependency build in the store across garbage collection,
-    # so updates never recompile more than the ReFineID crates.
+    # so updates never recompile more than the RefineID crates.
     keep-outputs = true;
   };
 ```
@@ -41,7 +41,7 @@ sudo NIX_CONFIG="experimental-features = nix-command flakes" nixos-rebuild switc
 The `NIX_CONFIG` prefix is needed only on the first rebuild: `getFlake`
 requires flakes, and the config line enabling them has not taken
 effect yet. One rebuild later the system has the `refineid` CLI, the
-GUI (in the application menu as "ReFineID"), pcscd with the CCID
+GUI (in the application menu as "RefineID"), pcscd with the CCID
 driver, the PKCS#11 module registered for p11-kit consumers, and
 Firefox card login. Plug in a reader and run `refineid card`.
 
@@ -56,7 +56,7 @@ sudo NIX_CONFIG="tarball-ttl = 0" nixos-rebuild switch
 
 `tarball-ttl = 0` makes Nix fetch the current revision; without it a
 rebuild reuses a revision fetched within the last hour. Only the
-ReFineID crates recompile on an update -- the dependency build is
+RefineID crates recompile on an update -- the dependency build is
 reused from the local Nix store until Cargo.lock or the pinned
 nixpkgs changes, and `nix.settings.keep-outputs = true` keeps it
 there across garbage collection.
@@ -89,7 +89,7 @@ Add the input and the module to your system flake:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     refineid = {
-      url = "github:ReFineID/ReFineID-Unix";
+      url = "github:RefineID/RefineID-Unix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -142,7 +142,7 @@ sudo NIX_CONFIG="experimental-features = nix-command flakes" nixos-rebuild switc
 `programs.refineid.enable = true` gives you:
 
 - `refineid` and `refineid-gui` in the system PATH, plus a
-  "ReFineID" entry in the application launcher;
+  "RefineID" entry in the application launcher;
 - `services.pcscd` running with the CCID reader driver -- no separate
   smart-card setup;
 - the PKCS#11 module registered system-wide for p11-kit consumers
@@ -161,7 +161,7 @@ manager without policies, a tarball install) needs one manual,
 per-profile registration:
 
 1. Settings > Privacy & Security > Security Devices > Load.
-2. Module name: `ReFineID`.
+2. Module name: `RefineID`.
 3. Module filename: the store path printed by
    `readlink -f $(which refineid) | sed 's,/bin/refineid,/lib/librefineid_pkcs11.so,'`
 
@@ -169,8 +169,8 @@ or from a shell:
 
 ```sh
 modutil -dbdir sql:$HOME/.mozilla/firefox/<profile> \
-        -add ReFineID \
-        -libfile "$(nix build github:ReFineID/ReFineID-Unix --print-out-paths --no-link)/lib/librefineid_pkcs11.so"
+        -add RefineID \
+        -libfile "$(nix build github:RefineID/RefineID-Unix --print-out-paths --no-link)/lib/librefineid_pkcs11.so"
 ```
 
 ## 2. Single-user install (manual Firefox setup)
@@ -191,7 +191,7 @@ rest lives in that user's profile. In `/etc/nixos/configuration.nix`:
 then, as the user:
 
 ```sh
-nix profile add github:ReFineID/ReFineID-Unix
+nix profile add github:RefineID/RefineID-Unix
 ```
 
 That user gets the `refineid` CLI and the GUI, application-menu
@@ -289,7 +289,7 @@ p11-kit list-modules     # shows refineid when the p11-kit config is active
 ```
 
 Firefox: with the card inserted, Settings > Privacy & Security >
-Security Devices should list `ReFineID` with your reader under it,
+Security Devices should list `RefineID` with your reader under it,
 and a card-login site will prompt for the certificate and PIN 1.
 
 ## Troubleshooting

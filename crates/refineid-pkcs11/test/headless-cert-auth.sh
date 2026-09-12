@@ -51,7 +51,7 @@
 #                              SSLVerifyClient-require endpoint).
 #   REQUEST_PATH               default /
 #   NICKNAME                   NSS nickname for the imported cert;
-#                              default ReFineID-FINEID-auth.
+#                              default RefineID-FINEID-auth.
 #   WORKDIR                    default: mktemp -d
 #   NSSCKBI                    path to libnssckbi (builtin CA
 #                              roots); overrides discovery.
@@ -74,7 +74,7 @@ PIN1="${REFINEID_TEST_PIN1:?set REFINEID_TEST_PIN1}"
 HOST="${HOST:-card.refineid.fi}"
 PORT="${PORT:-443}"
 REQUEST_PATH="${REQUEST_PATH:-/}"
-NICKNAME="${NICKNAME:-ReFineID-FINEID-auth}"
+NICKNAME="${NICKNAME:-RefineID-FINEID-auth}"
 WORK="${WORKDIR:-$(mktemp -d -t refineid-headless-cert-auth.XXXXXX)}"
 
 # Platform-portable cdylib extension + builtin-CA module location.
@@ -166,7 +166,7 @@ run_variant() {
   certutil -N -d "sql:$profile" --empty-password
   modutil -dbdir "sql:$profile" -add 'Builtin Roots' \
     -libfile "$NSSCKBI" -force 2>&1 | tail -1
-  modutil -dbdir "sql:$profile" -add 'ReFineID' -libfile "$dylib" -force 2>&1 | tail -1
+  modutil -dbdir "sql:$profile" -add 'RefineID' -libfile "$dylib" -force 2>&1 | tail -1
 
   certutil -A -d "sql:$profile" -n "$NICKNAME" -t "u,u,u" -i "$AUTH_CERT" 2>&1 | tail -1
 

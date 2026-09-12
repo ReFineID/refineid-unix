@@ -143,7 +143,7 @@ signature certificates use `secp384r1` (P-384). The qualified certificate
 is EF.4332 with `nonRepudiation`; it is independently usable with PIN2 even
 when the EF.4331 authentication key's PIN1 is locked. Windows registration
 uses the stable first 12 ATR bytes and masks manufacturing-specific bytes
-12..=16, then dispatches to the same ReFineID minidriver. The minidriver
+12..=16, then dispatches to the same RefineID minidriver. The minidriver
 reports an ECDSA P-384 signature container and drives PIN2 separately for
 each qualified signature; it never attempts to verify PIN1 on that path.
 

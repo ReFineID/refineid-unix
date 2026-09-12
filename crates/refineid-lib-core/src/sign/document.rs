@@ -1303,11 +1303,11 @@ mod interop {
     #[ignore = "requires the openssl binary"]
     fn openssl_verifies_a_routed_cades() {
         let dir = scratch("refineid-document-cades");
-        let certificate_der = issue_certificate(&dir, "ReFineID document CAdES");
+        let certificate_der = issue_certificate(&dir, "RefineID document CAdES");
         let certificate = Certificate::from_der(&certificate_der).expect("certificate");
         let parameters = parameters_for(&certificate);
 
-        let content = b"ReFineID -- declaration d'un moyen de cryptologie".to_vec();
+        let content = b"RefineID -- declaration d'un moyen de cryptologie".to_vec();
         std::fs::write(dir.join("doc.bin"), &content).expect("write doc");
         let objects = vec![DataObject {
             name: "doc.bin".to_owned(),
@@ -1386,7 +1386,7 @@ mod interop {
     #[ignore = "requires the openssl, xmlsec1 and unzip binaries"]
     fn xmlsec1_verifies_a_routed_container() {
         let dir = scratch("refineid-document-asice");
-        let certificate_der = issue_certificate(&dir, "ReFineID document ASiC");
+        let certificate_der = issue_certificate(&dir, "RefineID document ASiC");
         let certificate = Certificate::from_der(&certificate_der).expect("certificate");
         let parameters = parameters_for(&certificate);
 

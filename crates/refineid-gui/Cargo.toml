@@ -1,6 +1,6 @@
 [package]
 name = "refineid-gui"
-description = "ReFineID desktop application: PIN management, portrait/signature, and document signing"
+description = "RefineID desktop application: PIN management, portrait/signature, and document signing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
