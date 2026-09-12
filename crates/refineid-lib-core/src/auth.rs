@@ -338,29 +338,31 @@ pub enum PinPolicyReason {
     /// Typed length is outside `[slot.min_length(),
     /// slot.stored_length()]`.
     WrongLength {
-        /// Length of the rejected PIN in bytes.
-        got: usize,
         /// Minimum length the slot accepts.
         min: usize,
         /// Maximum length the slot accepts.
         max: usize,
     },
-    /// Non-digit ASCII byte at `byte_offset`. PIN bytes must all
+    /// Non-digit ASCII byte encountered. PIN bytes must all
     /// be in `b'0'..=b'9'`.
-    NonDigit {
-        /// Byte index at which the offending value was found.
-        byte_offset: usize,
-    },
+    NonDigit,
 }
 
 impl core::fmt::Display for PinPolicyReason {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::WrongLength { got: _, min, max } => {
-                write!(f, "pin length outside accepted range {min}..={max}")
+            Self::WrongLength { min, max } => {
+                if min == max {
+                    write!(
+                        f,
+                        "pin length outside accepted range: expected exactly {min} digits"
+                    )
+                } else {
+                    write!(f, "pin length outside accepted range {min}..={max}")
+                }
             }
-            Self::NonDigit { byte_offset } => {
-                write!(f, "pin contains a non-digit byte at offset {byte_offset}")
+            Self::NonDigit => {
+                write!(f, "pin must contain only ASCII digits")
             }
         }
     }
@@ -412,15 +414,12 @@ impl PinPolicyCheck {
     fn validate_ascii<TE>(ascii: &[u8], min: usize, stored: usize) -> Result<(), AuthError<TE>> {
         if ascii.len() < min || ascii.len() > stored {
             return Err(AuthError::PinPolicy(PinPolicyReason::WrongLength {
-                got: ascii.len(),
                 min,
                 max: stored,
             }));
         }
-        if let Some(off) = ascii.iter().position(|b| !b.is_ascii_digit()) {
-            return Err(AuthError::PinPolicy(PinPolicyReason::NonDigit {
-                byte_offset: off,
-            }));
+        if ascii.iter().any(|b| !b.is_ascii_digit()) {
+            return Err(AuthError::PinPolicy(PinPolicyReason::NonDigit));
         }
         Ok(())
     }
@@ -1718,8 +1717,7 @@ mod tests {
             reason = "PinPolicyReason is #[non_exhaustive]; an explicit catch-all is required by the language to match nested non-WrongLength variants."
         )]
         match err {
-            AuthError::PinPolicy(PinPolicyReason::WrongLength { got, min, max }) => {
-                assert_eq!(got, 4);
+            AuthError::PinPolicy(PinPolicyReason::WrongLength { min, max }) => {
                 assert_eq!(min, PIN2_MIN_LENGTH);
                 assert_eq!(max, PIN2_STORED_LENGTH);
             }
@@ -1977,8 +1975,7 @@ mod tests {
             reason = "PinPolicyReason is #[non_exhaustive]; an explicit catch-all is required by the language to match nested non-WrongLength variants."
         )]
         match err {
-            AuthError::PinPolicy(PinPolicyReason::WrongLength { got, min, max }) => {
-                assert_eq!(got, 6);
+            AuthError::PinPolicy(PinPolicyReason::WrongLength { min, max }) => {
                 assert_eq!(min, PUK_MIN_LENGTH);
                 assert_eq!(max, PUK_MAX_LENGTH);
             }
@@ -1996,7 +1993,6 @@ mod tests {
         assert!(matches!(
             err,
             AuthError::PinPolicy(PinPolicyReason::WrongLength {
-                got: 7,
                 min: PUK_MIN_LENGTH,
                 max: PUK_MAX_LENGTH
             })
@@ -2032,5 +2028,49 @@ mod tests {
             classify_reset_retry_sw(StatusWord::from_u16(0x6A82)),
             UnblockOutcome::Other(0x6A82)
         );
+    }
+
+    #[test]
+    fn pin_policy_reason_debug_does_not_leak_candidate_length_or_offset() {
+        let err_wrong_len: Result<(), AuthError<()>> =
+            PinPolicyCheck::validate_ascii(b"12", PIN1_MIN_LENGTH, PIN1_STORED_LENGTH);
+        let AuthError::PinPolicy(reason) = err_wrong_len.expect_err("below min length") else {
+            panic!("expected PinPolicy");
+        };
+        let expected_debug = format!(
+            "WrongLength {{ min: {}, max: {} }}",
+            PIN1_MIN_LENGTH, PIN1_STORED_LENGTH
+        );
+        assert_eq!(format!("{reason:?}"), expected_debug);
+
+        let err_non_digit: Result<(), AuthError<()>> =
+            PinPolicyCheck::validate_ascii(b"12a4", PIN1_MIN_LENGTH, PIN1_STORED_LENGTH);
+        let AuthError::PinPolicy(reason_non_digit) = err_non_digit.expect_err("contains non-digit")
+        else {
+            panic!("expected PinPolicy");
+        };
+        assert_eq!(format!("{reason_non_digit:?}"), "NonDigit");
+    }
+
+    #[test]
+    fn pin_policy_reason_display_is_always_shape_only() {
+        let wrong_len = PinPolicyReason::WrongLength {
+            min: PIN1_MIN_LENGTH,
+            max: PIN1_STORED_LENGTH,
+        };
+        let expected_wrong_len = format!(
+            "pin length outside accepted range {}..={}",
+            PIN1_MIN_LENGTH, PIN1_STORED_LENGTH
+        );
+        assert_eq!(wrong_len.to_string(), expected_wrong_len);
+
+        let exact_len = PinPolicyReason::WrongLength { min: 7, max: 7 };
+        assert_eq!(
+            exact_len.to_string(),
+            "pin length outside accepted range: expected exactly 7 digits"
+        );
+
+        let non_digit = PinPolicyReason::NonDigit;
+        assert_eq!(non_digit.to_string(), "pin must contain only ASCII digits");
     }
 }

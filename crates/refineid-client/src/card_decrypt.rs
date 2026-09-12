@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn stage_and_transport_error_display() -> TestResult {
         check_true(
-            DecryptAuthError::PinPolicy(PinPolicyReason::NonDigit { byte_offset: 0 })
+            DecryptAuthError::PinPolicy(PinPolicyReason::NonDigit)
                 .to_string()
                 .contains("PIN1 rejected locally"),
             "pin policy",

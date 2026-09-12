@@ -4,10 +4,11 @@
   PIN1 stays cached on the mobile device. PIN2 prompts appear strictly on the mobile
   device screen. The host computer and browsers operate via a protected authentication
   path (CKF_PROTECTED_AUTHENTICATION_PATH) and never prompt for or handle PIN codes.
-- RULE #2: ZERO PIN AND PIN-LENGTH LOGGING ACROSS ALL ENVIRONMENTS.
-  Never log, trace, display, or format PIN bytes, candidate PIN lengths (e.g. `got {len}`),
-  or development PIN role identifiers in log sinks, audit records, or error strings.
-  Never commit test PINs or card secrets.
+- RULE #2: ZERO PIN DATA AND CANDIDATE PIN-LENGTH LOGGING ACROSS ALL ENVIRONMENTS.
+  Never log, trace, display, or format PIN bytes, character offsets, supplied/candidate
+  PIN lengths, or development PIN role identifiers in log sinks, audit records, or
+  error strings. Only static specification policy bounds may be reported. Never commit
+  test PINs or card secrets.
 - Please No AI attribution spam in commits.
   No `Co-authored-by` / `Signed-off-by` / `Reviewed-by`
   or any AI-naming trailer; subject + body only. 
