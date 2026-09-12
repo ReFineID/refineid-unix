@@ -204,18 +204,16 @@ pub enum CardPinError {
         /// just carries the per-call expected value for the
         /// error message.
         expected: usize,
-        /// Length the operator typed in. Tier 0 `usize`.
-        got: usize,
     },
     /// `card activate` only: refineid couldn't classify the
     /// card generation and won't guess at activation-PIN length
     /// on the operator's behalf.
     UnknownCardGeneration,
-    /// `card activate` only: the card's data couldn't be
-    /// authenticated against a pinned anchor. The activation
-    /// flow refuses to use untrusted card-side data (issuance
-    /// date, etc.) for type selection -- without a verified
-    /// chain anchor the data could be from a counterfeit card.
+    /// `card activate` only: card data (either the auth-cert
+    /// chain or the EF.TokenInfo content) didn't validate
+    /// against our compile-time root pinning. The activation flow
+    /// refuses to send the secret activation PIN to unverified
+    /// hardware.
     CardDataUntrusted {
         /// Human-readable detail from
         /// `CardTrustAttestation::describe` explaining which
@@ -280,7 +278,6 @@ impl fmt::Display for CardPinError {
             Self::ActivationLengthMismatch {
                 generation,
                 expected,
-                got: _,
             } => write!(
                 f,
                 "activation PIN length wrong for this card: {generation:?} card \
@@ -1508,7 +1505,6 @@ impl ActivateGuard {
                 Some(CardPinError::ActivationLengthMismatch {
                     generation,
                     expected: 8,
-                    got: 7,
                 })
             }
             (ActivationCode::Eight(_), CardGeneration::Newer) => {
@@ -1516,7 +1512,6 @@ impl ActivateGuard {
                 Some(CardPinError::ActivationLengthMismatch {
                     generation,
                     expected: 7,
-                    got: 8,
                 })
             }
         }

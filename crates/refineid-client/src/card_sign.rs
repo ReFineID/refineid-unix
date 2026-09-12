@@ -2486,7 +2486,7 @@ mod tests {
         check_true(
             SignErrorKind::PinPolicy {
                 slot: SignSlot::Auth,
-                reason: PinPolicyReason::NonDigit { byte_offset: 1 },
+                reason: PinPolicyReason::NonDigit,
             }
             .to_string()
             .contains("PIN1 rejected locally"),
