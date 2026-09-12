@@ -40,8 +40,8 @@ sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
 ring = { version = "0.17", default-features = false, features = ["alloc", "std"] }
-x25519-dalek = { version = "2", default-features = false, features = ["static_secrets"] }
-chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+x25519-dalek = { version = "3", default-features = false, features = ["static_secrets"] }
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
 qrcodegen = "1.8"
 # Property-based testing (dev-only): falsification harness for the
 # Uri parser -- idempotence and total no-panic over generated inputs.
@@ -64,7 +64,7 @@ getrandom = "0.4"
 # signature mark can avoid what is already printed. Inflate only; nothing
 # here writes compressed data. Already in-tree transitively through
 # `image`'s PNG support.
-miniz_oxide = "0.8"
+miniz_oxide = "0.9"
 
 # Crypto stack for PACE + secure messaging on the FINEID card.
 aes = "0.9"
