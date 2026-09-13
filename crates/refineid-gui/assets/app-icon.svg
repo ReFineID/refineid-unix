@@ -18,8 +18,8 @@
   <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#field)"/>
   <!-- the card body -->
   <rect x="162" y="292" width="700" height="440" rx="45" fill="#FFFFFF"/>
-  <!-- gold contact chip, upper-left of the card -->
-  <g transform="translate(35,-75)">
+  <!-- gold contact chip, left of the card and vertically centered -->
+  <g transform="translate(35,75)">
     <g transform="matrix(1,0,0,-1,0,1024)">
       <defs>
         <clipPath id="pad">
